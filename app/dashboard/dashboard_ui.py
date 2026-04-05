@@ -9,6 +9,7 @@ import streamlit as st
 from app.config import load_settings
 from app.dashboard.goal_preferences import render_goal_preference
 from app.dashboard.privacy_settings import render_privacy_settings
+from app.maintenance.runner import handle_maintenance_request
 from app.services.metrics import (
     athlete_progress_table,
     club_summary,
@@ -351,7 +352,6 @@ def _render_dashboard_main(
 
 def run_dashboard() -> None:
     st.set_page_config(page_title="Strava Goal Tracker", layout="wide")
-    st.title("Strava 365 km Goal Tracker")
 
     settings = load_settings()
     repository = SQLiteRepository(
@@ -359,6 +359,11 @@ def run_dashboard() -> None:
         token_encryption_key=settings.token_encryption_key,
     )
     repository.initialize()
+
+    if handle_maintenance_request(settings, repository):
+        return
+
+    st.title("Strava 365 km Goal Tracker")
     auto_sync_key = "dashboard_auto_sync_checked"
     viewer_key = _SESSION_VIEWER_KEY
 

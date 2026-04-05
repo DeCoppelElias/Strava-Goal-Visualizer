@@ -1,0 +1,40 @@
+name: Scheduled Maintenance
+
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+jobs:
+  maintenance:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger sync-authorized
+        env:
+          MAINTENANCE_BASE_URL: ${{ secrets.MAINTENANCE_BASE_URL }}
+          MAINTENANCE_CRON_TOKEN: ${{ secrets.MAINTENANCE_CRON_TOKEN }}
+        run: |
+          set -euo pipefail
+          response=$(curl -sS --retry 4 --retry-delay 15 --max-time 300 "${MAINTENANCE_BASE_URL}?maintenance_action=sync-authorized&maintenance_token=${MAINTENANCE_CRON_TOKEN}")
+          echo "$response"
+          echo "$response" | grep -q "MAINTENANCE_STATUS=ok"
+
+      - name: Trigger cleanup-inactive
+        env:
+          MAINTENANCE_BASE_URL: ${{ secrets.MAINTENANCE_BASE_URL }}
+          MAINTENANCE_CRON_TOKEN: ${{ secrets.MAINTENANCE_CRON_TOKEN }}
+        run: |
+          set -euo pipefail
+          response=$(curl -sS --retry 4 --retry-delay 15 --max-time 300 "${MAINTENANCE_BASE_URL}?maintenance_action=cleanup-inactive&days=90&maintenance_token=${MAINTENANCE_CRON_TOKEN}")
+          echo "$response"
+          echo "$response" | grep -q "MAINTENANCE_STATUS=ok"
+
+      - name: Trigger cleanup-activities
+        env:
+          MAINTENANCE_BASE_URL: ${{ secrets.MAINTENANCE_BASE_URL }}
+          MAINTENANCE_CRON_TOKEN: ${{ secrets.MAINTENANCE_CRON_TOKEN }}
+        run: |
+          set -euo pipefail
+          response=$(curl -sS --retry 4 --retry-delay 15 --max-time 300 "${MAINTENANCE_BASE_URL}?maintenance_action=cleanup-activities&years=3&maintenance_token=${MAINTENANCE_CRON_TOKEN}")
+          echo "$response"
+          echo "$response" | grep -q "MAINTENANCE_STATUS=ok"

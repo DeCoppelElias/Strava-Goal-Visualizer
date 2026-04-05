@@ -23,6 +23,7 @@ class Settings:
     manual_sync_cooldown_seconds: int = 3600
     support_contact_email: str = ""
     token_encryption_key: str = ""
+    maintenance_cron_token: str = ""
 
 
 def load_settings() -> Settings:
@@ -93,4 +94,5 @@ def load_settings() -> Settings:
         manual_sync_cooldown_seconds=manual_sync_cooldown_seconds,
         support_contact_email=os.getenv("SUPPORT_CONTACT_EMAIL", "").strip(),
         token_encryption_key=token_encryption_key,
+        maintenance_cron_token=os.getenv("MAINTENANCE_CRON_TOKEN", "").strip(),
     )

@@ -104,7 +104,37 @@ When using the dashboard:
 
 Or run Streamlit directly:
 
-streamlit run app/dashboard/dashboard_ui.py
+python -m streamlit run app/dashboard/dashboard_ui.py
+
+## GitHub-Scheduled Maintenance (Render Free Tier)
+
+If your hosting tier does not include built-in cron jobs, use the included GitHub workflow
+`maintenance.yml` to trigger maintenance actions over HTTPS.
+
+### 1. Configure app environment
+
+Set `MAINTENANCE_CRON_TOKEN` in your deployed environment to a long random string.
+
+### 2. Add GitHub repository secrets
+
+Set these in GitHub: Settings -> Secrets and variables -> Actions -> New repository secret.
+
+- `MAINTENANCE_BASE_URL`: your deployed app URL ending with `/`, for example
+   `https://your-app-name.onrender.com/`
+- `MAINTENANCE_CRON_TOKEN`: same value as your deployed `MAINTENANCE_CRON_TOKEN`
+
+### 3. Enable scheduled workflow
+
+The workflow file `.github/workflows/maintenance.yml` runs daily and can also be run manually via
+Actions -> Scheduled Maintenance -> Run workflow.
+
+It triggers:
+
+- `sync-authorized`
+- `cleanup-inactive` with `days=90`
+- `cleanup-activities` with `years=3`
+
+You can tune these values by editing `.github/workflows/maintenance.yml`.
 
 ## Deployment Guide
 
@@ -180,4 +210,5 @@ pytest
 - Data subject operations: use `export-user-data` for access/export requests and `forget-user` for delete requests.
 - DSAR audit logging: export and delete actions are recorded in `dsar_audit_log` for compliance evidence.
 - OAuth token secrets are encrypted at rest using `TOKEN_ENCRYPTION_KEY`.
+- Scheduled maintenance trigger requests require `MAINTENANCE_CRON_TOKEN`.
 - Keep .env private. The .gitignore already excludes it.
