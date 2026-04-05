@@ -6,9 +6,11 @@ from typing import Any
 
 import streamlit as st
 
-from app.services.sync import sync_all_authorized_users
 from app.storage.sqlite import SQLiteRepository
 from app.strava.client import StravaClientError
+
+# Note: st.write/st.success output is only visible in a browser session via WebSocket.
+# All maintenance results are also emitted via logger so they appear in server/Render logs.
 
 logger = logging.getLogger(__name__)
 
@@ -37,8 +39,8 @@ def _query_param_text(key: str) -> str | None:
 
 
 def _write_maintenance_error(message: str) -> None:
-    st.error("MAINTENANCE_STATUS=error")
-    st.write(f"reason={message}")
+    logger.error("Maintenance error: %s", message)
+    st.error(f"Maintenance error: {message}")
 
 
 def handle_maintenance_request(settings: Any, repository: SQLiteRepository) -> bool:
@@ -56,15 +58,6 @@ def handle_maintenance_request(settings: Any, repository: SQLiteRepository) -> b
         return True
 
     try:
-        if action == "sync-authorized":
-            result = sync_all_authorized_users(settings)
-            st.success("MAINTENANCE_STATUS=ok")
-            st.write("action=sync-authorized")
-            st.write(f"accounts_seen={result.accounts_seen}")
-            st.write(f"accounts_synced={result.accounts_synced}")
-            st.write(f"stored_activities={result.total_stored_activities}")
-            return True
-
         if action == "cleanup-inactive":
             days = _query_param_int("days") or 90
             cutoff = datetime.now(UTC) - timedelta(days=days)
@@ -85,13 +78,19 @@ def handle_maintenance_request(settings: Any, repository: SQLiteRepository) -> b
                 total_deleted_tokens += deleted["oauth_tokens"]
                 total_deleted_activities += deleted["activities"]
 
-            st.success("MAINTENANCE_STATUS=ok")
-            st.write("action=cleanup-inactive")
-            st.write(f"days={days}")
-            st.write(f"inactive_accounts={len(inactive_accounts)}")
-            st.write(f"deleted_verified_users={total_deleted_users}")
-            st.write(f"deleted_oauth_tokens={total_deleted_tokens}")
-            st.write(f"deleted_activities={total_deleted_activities}")
+            logger.info(
+                "Maintenance cleanup-inactive complete: "
+                "days=%d inactive=%d deleted_users=%d deleted_tokens=%d deleted_activities=%d",
+                days,
+                len(inactive_accounts),
+                total_deleted_users,
+                total_deleted_tokens,
+                total_deleted_activities,
+            )
+            st.success(
+                f"Cleanup inactive complete: {total_deleted_users} users removed "
+                f"({len(inactive_accounts)} inactive, cutoff={days} days)."
+            )
             return True
 
         if action == "cleanup-activities":
@@ -104,17 +103,24 @@ def handle_maintenance_request(settings: Any, repository: SQLiteRepository) -> b
                 else {"activities": 0, "athletes": 0}
             )
 
-            st.success("MAINTENANCE_STATUS=ok")
-            st.write("action=cleanup-activities")
-            st.write(f"years={years}")
-            st.write(f"older_activities={old_count}")
-            st.write(f"deleted_activities={deleted['activities']}")
-            st.write(f"deleted_orphan_athletes={deleted['athletes']}")
+            logger.info(
+                "Maintenance cleanup-activities complete: "
+                "years=%d older=%d deleted_activities=%d deleted_athletes=%d",
+                years,
+                old_count,
+                deleted["activities"],
+                deleted["athletes"],
+            )
+            st.success(
+                f"Cleanup activities complete: {deleted['activities']} activities removed "
+                f"({old_count} found older than {years} years)."
+            )
             return True
 
+        logger.warning("Unsupported maintenance_action: %s", action)
         _write_maintenance_error(f"Unsupported maintenance_action: {action}")
         return True
     except (StravaClientError, ValueError) as exc:
-        logger.exception("Maintenance action failed: %s", action)
+        logger.exception("Maintenance action failed: action=%s error=%s", action, exc)
         _write_maintenance_error(str(exc))
         return True
