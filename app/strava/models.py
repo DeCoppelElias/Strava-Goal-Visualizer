@@ -56,9 +56,9 @@ def fuzzy_name_match(
             club_first = parts[0]
             club_last = parts[1].rstrip(".")
             # Simple edit distance: allow 1-char difference in first name
-            first_diff = sum(
-                a != b for a, b in zip(club_first, first, strict=False)
-            ) + abs(len(club_first) - len(first))
+            first_diff = sum(a != b for a, b in zip(club_first, first, strict=False)) + abs(
+                len(club_first) - len(first)
+            )
             if first_diff <= 1 and club_last == last_initial:
                 return 0.85
 

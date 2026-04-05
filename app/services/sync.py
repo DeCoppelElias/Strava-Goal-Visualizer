@@ -26,7 +26,6 @@ class SyncAuthorizedBatchResult:
     total_stored_activities: int
 
 
-
 def _year_start_utc(now_utc: datetime) -> datetime:
     return datetime(now_utc.year, 1, 1, tzinfo=UTC)
 

@@ -282,9 +282,7 @@ def _cleanup_inactive_command(
         print(f"No inactive OAuth accounts found for cutoff={cutoff.isoformat()}.")
         return 0
 
-    print(
-        f"Inactive accounts found: {len(inactive_accounts)} (cutoff={cutoff.isoformat()})"
-    )
+    print(f"Inactive accounts found: {len(inactive_accounts)} (cutoff={cutoff.isoformat()})")
     for account in inactive_accounts:
         full_name = f"{account['firstname']} {account['lastname']}"
         print(

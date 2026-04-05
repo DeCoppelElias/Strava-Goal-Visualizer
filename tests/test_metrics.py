@@ -75,7 +75,6 @@ def test_athlete_progress_table_supports_per_athlete_goal_map() -> None:
     assert round(float(runner_b["completion_pct"]), 2) == 6.25
 
 
-
 def test_club_summary_aggregates_totals() -> None:
     progress = pd.DataFrame(
         [

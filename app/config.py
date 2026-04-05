@@ -25,7 +25,6 @@ class Settings:
     token_encryption_key: str = ""
 
 
-
 def load_settings() -> Settings:
     load_dotenv()
 
@@ -71,14 +70,12 @@ def load_settings() -> Settings:
     token_encryption_key = os.getenv("TOKEN_ENCRYPTION_KEY", "").strip()
 
     if not client_id_raw or not client_secret:
-        raise ValueError(
-            "Authorized-only mode requires STRAVA_CLIENT_ID and STRAVA_CLIENT_SECRET"
-        )
+        raise ValueError("Authorized-only mode requires STRAVA_CLIENT_ID and STRAVA_CLIENT_SECRET")
     if not token_encryption_key:
         raise ValueError(
             "TOKEN_ENCRYPTION_KEY is required. Generate with: "
-            "python -c \"from cryptography.fernet import Fernet; "
-            "print(Fernet.generate_key().decode())\""
+            'python -c "from cryptography.fernet import Fernet; '
+            'print(Fernet.generate_key().decode())"'
         )
 
     return Settings(

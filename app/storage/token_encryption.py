@@ -39,6 +39,4 @@ class TokenEncryption:
         try:
             return self._token_cipher.decrypt(encrypted_payload.encode("utf-8")).decode("utf-8")
         except InvalidToken as exc:
-            raise ValueError(
-                "OAuth token decryption failed. Check TOKEN_ENCRYPTION_KEY."
-            ) from exc
+            raise ValueError("OAuth token decryption failed. Check TOKEN_ENCRYPTION_KEY.") from exc

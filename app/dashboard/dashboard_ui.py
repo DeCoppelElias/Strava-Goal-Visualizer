@@ -302,9 +302,7 @@ def _render_dashboard_main(
     guide_data = one_km_per_day_guide(
         selected_year,
         annual_goal_km=guide_goal_km,
-    ).rename(
-        columns={"guide_km": "km"}
-    )
+    ).rename(columns={"guide_km": "km"})
     guide_data["series"] = f"On-track guide ({guide_goal_km:.0f} km goal)"
 
     x_domain = [
@@ -436,13 +434,10 @@ def run_dashboard() -> None:
         if latest_sync_utc is None:
             st.sidebar.caption("Last sync: never")
         else:
-            st.sidebar.caption(
-                f"Last sync: {latest_sync_utc.strftime('%Y-%m-%d %H:%M UTC')}"
-            )
+            st.sidebar.caption(f"Last sync: {latest_sync_utc.strftime('%Y-%m-%d %H:%M UTC')}")
         if cooldown_remaining_seconds > 0:
             st.sidebar.caption(
-                "Manual sync cooldown: "
-                f"{_format_seconds(cooldown_remaining_seconds)} remaining"
+                "Manual sync cooldown: " f"{_format_seconds(cooldown_remaining_seconds)} remaining"
             )
         for account in oauth_accounts:
             account_last_sync = _parse_last_sync_utc(account.get("last_sync_utc"))

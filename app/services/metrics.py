@@ -13,7 +13,6 @@ class ClubSummary:
     completion_pct: float
 
 
-
 def athlete_progress_table(
     activities: pd.DataFrame,
     annual_goal_km: float | Mapping[int, float],
@@ -63,7 +62,6 @@ def athlete_progress_table(
     ].sort_values(by=["completion_pct", "distance_km"], ascending=False)
 
 
-
 def club_summary(progress_table: pd.DataFrame) -> ClubSummary:
     if progress_table.empty:
         return ClubSummary(total_distance_km=0.0, total_goal_km=0.0, completion_pct=0.0)
@@ -79,19 +77,13 @@ def club_summary(progress_table: pd.DataFrame) -> ClubSummary:
     )
 
 
-
 def cumulative_distance_progress(activities: pd.DataFrame) -> pd.DataFrame:
     if activities.empty:
         return pd.DataFrame(columns=["date", "athlete_name", "cumulative_km"])
 
     df = activities.copy()
     df["start_date_utc"] = pd.to_datetime(df["start_date_utc"], utc=True)
-    df["date"] = (
-        df["start_date_utc"]
-        .dt.tz_convert("UTC")
-        .dt.tz_localize(None)
-        .dt.normalize()
-    )
+    df["date"] = df["start_date_utc"].dt.tz_convert("UTC").dt.tz_localize(None).dt.normalize()
 
     daily = (
         df.groupby(["athlete_name", "date"], as_index=False)

@@ -197,7 +197,7 @@ class TestFuzzyNameMatch:
 
     def test_fuzzy_match_first_name_fuzzy_with_initial(self) -> None:
         """Fuzzy first-name match is strict (1 char editdist + length diff).
-        
+
         "jon" vs "john": 1 char mismatch + 1 length diff = too many errors.
         This is actually not fuzzy enough for common scenarios.
         Test adjusted to document current behavior.

@@ -26,13 +26,13 @@ def build_authorize_url(
     state: str = "strava_auth",
 ) -> str:
     """Build Strava OAuth authorize URL.
-    
+
     Args:
         client_id: Your Strava app client ID
         redirect_uri: Where Strava redirects after user approves (must match app settings)
         scope: Comma-separated scopes
         state: Anti-forgery token (simple static string for this implementation)
-        
+
     Returns:
         Full Strava authorize URL to open in browser
     """
@@ -53,16 +53,16 @@ def start_callback_listener(
     expected_state: str | None = None,
 ) -> str:
     """Start local HTTP server listening for OAuth callback on localhost:{port}/callback.
-    
+
     Blocks until callback received or timeout. Returns the authorization code.
-    
+
     Args:
         port: Port to listen on (default 8765)
         timeout_seconds: How long to wait for callback before raising TimeoutError
-        
+
     Returns:
         Authorization code from Strava
-        
+
     Raises:
         TimeoutError: If no callback received within timeout
         StravaOAuthError: If callback URL is invalid or code missing
@@ -107,9 +107,7 @@ def start_callback_listener(
                     self.send_response(403)
                     self.send_header("Content-type", "text/html")
                     self.end_headers()
-                    self.wfile.write(
-                        b"<h1>Authorization denied by Strava. Close this window.</h1>"
-                    )
+                    self.wfile.write(b"<h1>Authorization denied by Strava. Close this window.</h1>")
                     ready_event.set()
                     return
 
@@ -125,9 +123,7 @@ def start_callback_listener(
                 self.send_response(200)
                 self.send_header("Content-type", "text/html")
                 self.end_headers()
-                self.wfile.write(
-                    b"<h1>&#10003; Authorization successful. Close this window.</h1>"
-                )
+                self.wfile.write(b"<h1>&#10003; Authorization successful. Close this window.</h1>")
                 ready_event.set()
             except Exception as e:
                 logger.error("Error handling OAuth callback: %s", e)
@@ -176,17 +172,17 @@ def exchange_code_for_tokens(
     oauth_url: str = "https://www.strava.com/oauth/token",
 ) -> dict[str, str | int]:
     """Exchange authorization code for access token and refresh token.
-    
+
     Args:
         code: Authorization code from Strava callback
         client_id: Your Strava app client ID
         client_secret: Your Strava app client secret
         redirect_uri: Must match the redirect_uri used in authorize request
         oauth_url: Strava OAuth token endpoint (can override for testing)
-        
+
     Returns:
         Dict with keys: access_token, refresh_token, expires_at
-        
+
     Raises:
         StravaOAuthError: If token exchange fails
     """
@@ -203,9 +199,7 @@ def exchange_code_for_tokens(
     try:
         response = requests.post(oauth_url, data=payload, timeout=20)
     except requests.RequestException as e:
-        raise StravaOAuthError(
-            f"Failed to reach Strava OAuth endpoint: {e}"
-        ) from e
+        raise StravaOAuthError(f"Failed to reach Strava OAuth endpoint: {e}") from e
 
     if response.status_code >= 400:
         detail = response.text.strip()

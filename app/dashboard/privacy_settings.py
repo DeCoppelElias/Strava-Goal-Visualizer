@@ -128,18 +128,21 @@ def render_privacy_settings(
                 export_file_name = f"strava_user_{verified_user_id}_export.json"
                 can_download = True
 
-    if st.download_button(
-        "Download My Data (JSON)",
-        data=export_json,
-        file_name=export_file_name,
-        mime="application/json",
-        disabled=not can_download,
-        help=(
-            "Verify your identity with Strava first to enable download."
-            if not can_download
-            else ""
-        ),
-    ) and verified_user_id_for_log is not None:
+    if (
+        st.download_button(
+            "Download My Data (JSON)",
+            data=export_json,
+            file_name=export_file_name,
+            mime="application/json",
+            disabled=not can_download,
+            help=(
+                "Verify your identity with Strava first to enable download."
+                if not can_download
+                else ""
+            ),
+        )
+        and verified_user_id_for_log is not None
+    ):
         repository.log_dsar_event(
             verified_user_id=verified_user_id_for_log,
             event_type="export",
@@ -185,10 +188,7 @@ def render_privacy_settings(
                 },
             )
             if revoke_warning is not None:
-                st.warning(
-                    "Strava revoke failed, but local data was removed: "
-                    f"{revoke_warning}"
-                )
+                st.warning("Strava revoke failed, but local data was removed: " f"{revoke_warning}")
             st.success(
                 "Account disconnected. "
                 f"Removed users={deleted['verified_users']} "

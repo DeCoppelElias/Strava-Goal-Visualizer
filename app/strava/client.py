@@ -107,16 +107,11 @@ class StravaClient:
                 start_timestamp = activity.get("start_date")
                 if start_timestamp:
                     try:
-                        dt = datetime.fromisoformat(
-                            start_timestamp.replace("Z", "+00:00")
-                        )
+                        dt = datetime.fromisoformat(start_timestamp.replace("Z", "+00:00"))
                         ts = dt.timestamp()
                         if ts >= year_start and ts <= year_end:
                             # Filter to Runs only
-                            if (
-                                activity.get("sport_type") == "Run"
-                                or activity.get("type") == "Run"
-                            ):
+                            if activity.get("sport_type") == "Run" or activity.get("type") == "Run":
                                 filtered_activities.append(activity)
                         elif ts < year_start:
                             reached_year_boundary = True
@@ -133,9 +128,7 @@ class StravaClient:
             )
 
             if reached_year_boundary:
-                logger.info(
-                    "Reached year boundary at page=%s; stopping early", page
-                )
+                logger.info("Reached year boundary at page=%s; stopping early", page)
                 break
 
             page += 1
@@ -159,8 +152,7 @@ class StravaClient:
         if response.status_code >= 400:
             detail = response.text.strip()
             raise StravaClientError(
-                "Strava deauthorize failed with status "
-                f"{response.status_code}: {detail}"
+                "Strava deauthorize failed with status " f"{response.status_code}: {detail}"
             )
 
     def _request_with_retry(
@@ -204,8 +196,7 @@ class StravaClient:
                 detail = response.text.strip()
                 if wait_seconds is None:
                     raise StravaRateLimitError(
-                        "Strava API rate limit exceeded. Retry later. "
-                        f"Server response: {detail}"
+                        "Strava API rate limit exceeded. Retry later. " f"Server response: {detail}"
                     )
                 raise StravaRateLimitError(
                     "Strava API rate limit exceeded. "
@@ -274,8 +265,7 @@ class StravaClient:
         if response.status_code >= 400:
             detail = response.text.strip()
             raise StravaClientError(
-                "Strava token refresh failed with status "
-                f"{response.status_code}: {detail}"
+                "Strava token refresh failed with status " f"{response.status_code}: {detail}"
             )
 
         payload = response.json()

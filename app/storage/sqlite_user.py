@@ -74,8 +74,7 @@ class SQLiteUserMixin(SQLiteRepositoryProtocol):
             ).fetchall()
 
         goal_map: dict[int, float] = {
-            int(user_id): float(default_goal_km)
-            for user_id in unique_ids
+            int(user_id): float(default_goal_km) for user_id in unique_ids
         }
         for row in rows:
             user_id = int(row[0])
@@ -92,9 +91,7 @@ class SQLiteUserMixin(SQLiteRepositoryProtocol):
         if annual_goal_km <= 0:
             raise ValueError("annual_goal_km must be greater than 0")
         if annual_goal_km > max_annual_goal_km:
-            raise ValueError(
-                f"annual_goal_km must be <= {float(max_annual_goal_km):.1f}"
-            )
+            raise ValueError(f"annual_goal_km must be <= {float(max_annual_goal_km):.1f}")
 
         with self._connect() as conn:
             conn.execute(
