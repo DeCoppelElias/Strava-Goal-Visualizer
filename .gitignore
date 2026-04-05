@@ -1,0 +1,29 @@
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+.env
+data/*.db
+*.sqlite3
+
+# Python build and packaging artifacts
+build/
+dist/
+*.egg-info/
+
+# Coverage artifacts
+.coverage
+.coverage.*
+htmlcov/
+
+# Notebook and local runtime artifacts
+.ipynb_checkpoints/
+
+# Streamlit local secrets/config
+.streamlit/secrets.toml
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
