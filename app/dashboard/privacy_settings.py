@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import streamlit as st
@@ -100,6 +101,25 @@ def render_privacy_settings(
     mark_viewer_verified: Callable[[int], None],
     clear_viewer_session: Callable[[], None],
 ) -> None:
+    # Check session timeout (15 minutes between verifications)
+    _SESSION_TIMEOUT = timedelta(minutes=15)
+    _SESSION_VERIFIED_AT_KEY = "dashboard_verified_at_utc"
+
+    verified_at_str = st.session_state.get(_SESSION_VERIFIED_AT_KEY)
+    if verified_at_str:
+        try:
+            verified_at_dt = datetime.fromisoformat(verified_at_str)
+            age = datetime.now(UTC) - verified_at_dt
+            if age > _SESSION_TIMEOUT:
+                st.warning(
+                    f"⏱️ Session expired after {_SESSION_TIMEOUT.total_seconds() / 60:.0f} minutes. "
+                    "Please verify your identity again."
+                )
+                clear_viewer_session()
+                st.stop()
+        except (ValueError, TypeError):
+            pass  # Invalid timestamp format, continue
+
     _privacy_policy_notice(settings)
 
     export_json = "{}"

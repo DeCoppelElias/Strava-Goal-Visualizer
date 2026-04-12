@@ -251,6 +251,9 @@ This project is licensed under the MIT License. See `LICENSE`.
 - Sync progress is logged (page fetches, totals, and token refresh events). Set LOG_LEVEL in .env (for example INFO or DEBUG).
 - Configure SUPPORT_CONTACT_EMAIL in .env so users can reach you for privacy/data requests.
 - Configure `PRIVACY_POLICY_URL`, `TERMS_URL`, and `DATA_DELETION_URL` in .env to show public legal links in `Privacy Settings`.
+- This is a small hobby project shared selectively with friends and communities. While the
+  deployed app is technically accessible to anyone, it is not marketed for broad public use.
+  Exercise discretion when sharing and avoid public announcements or marketing.
 - Data handling: the app stores OAuth account identity, token metadata, and synced activity records locally in SQLite for analytics.
 - Inactivity cleanup: use `cleanup-inactive` regularly to remove inactive users and reduce retained personal data.
 - Activity retention cleanup: use `cleanup-activities` to remove activity records older than your retention window.
