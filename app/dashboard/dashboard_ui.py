@@ -98,6 +98,7 @@ def _progress_display_table(progress: Any) -> Any:
                 "run_count",
                 "distance_km",
                 "goal_km",
+                "days_elapsed",
                 "completion_pct",
                 "remaining_km",
             ],
@@ -108,6 +109,7 @@ def _progress_display_table(progress: Any) -> Any:
                 "run_count": "Runs",
                 "distance_km": "Distance (km)",
                 "goal_km": "Goal (km)",
+                "days_elapsed": "Days",
                 "completion_pct": "Completion (%)",
                 "remaining_km": "Remaining (km)",
             }
@@ -193,12 +195,13 @@ def _render_dashboard_main(
     if active_club_id is None:
         # Personal view: goal_map is a single float
         guide_goal_km = goal_map if isinstance(goal_map, float) else settings.annual_goal_km
-        progress = athlete_progress_table(activities, guide_goal_km)
+        progress = athlete_progress_table(activities, guide_goal_km, year=selected_year)
     else:
         # Club view: goal_map is a dict
         progress = athlete_progress_table(
             activities,
             goal_map if isinstance(goal_map, dict) else settings.annual_goal_km,
+            year=selected_year,
         )
 
     summary = club_summary(progress)
