@@ -4,260 +4,202 @@ A privacy-first analytics dashboard that syncs OAuth-authorized Strava run activ
 
 ## Features
 
-- OAuth-authorized athlete sync with pagination and retry handling
-- SQLite cache with idempotent upserts
-- Dashboard auto-sync when cached data is stale (default: 24 hours)
-- Manual dashboard sync action: personal sync in default view, club sync in club view
-- Athlete leaderboard showing progress toward 365 km
-- Per-user annual goal preference (default 365 km) with saved override
-- Year selector for dashboard analytics
-- Interactive Jan-Dec cumulative yearly progress chart per athlete
-- On-track guide line at 1 km/day for pace comparison
-- Interactive web dashboard using Streamlit
-- Dashboard privacy controls to disconnect an account and remove local data
-- Dedicated Privacy Settings screen with identity verification before export/delete
-- Strict quality tooling (ruff, mypy, pytest)
+- **OAuth Integration** — Secure Strava account authorization with pagination and automatic retry handling.
+- **SQLite Analytics** — Local-first data storage with intelligent caching and deduplication.
+- **Smart Sync** — Auto-sync when stale (24h default) plus on-demand sync with per-user cooldown.
+- **Club Leaderboards** — View multiple athletes' yearly progress toward 365 km in one dashboard.
+- **Customizable Goals** — Per-athlete annual goal with visual progress tracking (1 km/day guide line).
+- **Privacy Controls** — Identity-verified data export and deletion, account disconnection, audit logging.
+- **Interactive Charts** — Jan-Dec cumulative progress, year selector, multi-athlete comparison.
+- **Quality & Testing** — Full type hints (mypy), code style (ruff), and pytest test suite.
 
-## Setup
+## Quick Start
 
-1. Create and activate your virtual environment.
-2. Install dependencies:
+### 1. Prerequisites
+- Python 3.11+
+- Virtual environment tool (venv or conda)
 
-   pip install -r requirements.txt
+### 2. Installation
 
-3. Create your env file:
+```bash
+# Create and activate virtual environment
+python -m venv .venv
+.\.venv\Scripts\activate  # Windows
+# or: source .venv/bin/activate  # macOS/Linux
 
-   copy .env.example .env
+# Install dependencies
+pip install -r requirements.txt
+```
 
-4. Configure auth in .env:
+### 3. Configuration
 
-   Required:
-   STRAVA_CLIENT_ID
-   STRAVA_CLIENT_SECRET
-   TOKEN_ENCRYPTION_KEY
+```bash
+# Copy template
+copy .env.example .env  # Windows
+# or: cp .env.example .env  # macOS/Linux
+```
 
-   Generate TOKEN_ENCRYPTION_KEY with:
+Edit `.env` and set required fields:
+```dotenv
+STRAVA_CLIENT_ID=your_app_id
+STRAVA_CLIENT_SECRET=your_app_secret
+TOKEN_ENCRYPTION_KEY=<generated below>
+```
 
-   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+Generate an encryption key:
+```bash
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
 
-## Usage
+### 4. Launch Dashboard
 
-Authorize a Strava account via OAuth and store token locally:
+```bash
+python main.py dashboard
+```
 
+Visit `http://localhost:8501` in your browser. Authorize your Strava account via OAuth.
+
+## CLI Commands
+
+### Strava OAuth
+```bash
+# Authorize a new Strava account
 python main.py oauth-authorize
 
-Sync all authorized athletes:
+# List all authorized accounts
+python main.py oauth-list
+```
 
+### Syncing Activities
+```bash
+# Sync all authorized athletes
 python main.py sync-authorized
 
-Sync one authorized athlete:
-
+# Sync one athlete by ID
 python main.py sync --verified-user-id 123456
+```
 
-List stored OAuth accounts:
-
-python main.py oauth-list
-
-Export one user's stored data (JSON):
-
+### Data Export & Deletion
+```bash
+# Export one user's data as JSON
 python main.py export-user-data --verified-user-id 123456 --output exports/user_123456.json
 
-Forget one user and delete local data:
-
+# Delete one user's stored data and revoke OAuth
 python main.py forget-user --verified-user-id 123456
+```
 
-Preview inactive users (dry run):
+### Maintenance & Cleanup
 
+Dry-run (preview without changes):
+```bash
+# Preview inactive users (inactivity > 90 days)
 python main.py cleanup-inactive --days 90
 
-Execute inactive cleanup:
+# Preview old activities (older than 3 years)
+python main.py cleanup-activities --years 3
+```
 
+Execute cleanup:
+```bash
+# Remove inactive users and revoke their OAuth tokens
 python main.py cleanup-inactive --days 90 --execute --revoke
 
-Preview old activity cleanup (dry run):
-
-python main.py cleanup-activities --years 3
-
-Execute old activity cleanup:
-
+# Delete old activities
 python main.py cleanup-activities --years 3 --execute
+```
 
-List DSAR audit events:
-
+### Audit & Monitoring
+```bash
+# View DSAR (Data Subject Access Request) audit log
 python main.py list-dsar-events --limit 50
 
-Launch dashboard:
-
-python main.py dashboard
-
-When using the dashboard:
-
-- Connecting an account triggers an immediate sync for all authorized accounts.
-- Opening the dashboard auto-syncs only when data is stale (configurable).
-- In default view, `Sync yourself` syncs only your account and is rate-limited by
-   `MANUAL_SYNC_COOLDOWN_SECONDS` (one hour by default).
-- In club view (`?club_id=<id>`), `Sync club` syncs only connected members in that club.
-   Cooldown is enforced per member, so recently synced members are skipped.
-- If a user disconnects and deletes local data in `Privacy Settings`, that user is removed from
-   future club sync account lists automatically.
-- Annual goal defaults to `ANNUAL_GOAL_KM` (365 by default), and each user can save a custom goal.
-- Custom goals are capped by `MAX_ANNUAL_GOAL_KM` (default: 100000).
-- Privacy operations are available in `Privacy Settings` and require identity verification via
-   Strava OAuth before data export or deletion.
-- Disconnect in `Privacy Settings` revokes authorization and deletes all local data for the
-   verified account in one action.
-
-Or run Streamlit directly:
-
+# Launch Streamlit directly (alternative to 'dashboard' command)
 python -m streamlit run app/dashboard/dashboard_ui.py
+```
 
-## GitHub-Scheduled Maintenance (Render Free Tier)
+## Dashboard Usage
 
-If your hosting tier does not include built-in cron jobs, use the included GitHub workflow
-`maintenance.yml` to trigger maintenance actions over HTTPS.
+### Behavior & Features
+- **Connecting an account** triggers an immediate sync for all authorized accounts.
+- **Auto-sync** only triggers when data is stale (configurable via `AUTO_SYNC_STALENESS_HOURS`, default 24h).
+- **Personal sync** (`Sync yourself` in default view) syncs only your account and respects `MANUAL_SYNC_COOLDOWN_SECONDS` (1h default).
+- **Club sync** (`Sync club` in club view with `?club_id=<id>`) syncs all connected members; cooldown is per-member.
+- **Custom goals** — Each athlete can set a custom annual goal (capped by `MAX_ANNUAL_GOAL_KM`, default 100,000 km).
+- **Year-to-date progress** — View cumulative km toward goal with interactive charts and pace guide.
+- **Privacy Settings** — Access data export, deletion, and account disconnection (all require OAuth re-verification).
 
-### 1. Configure app environment
+### Authentication Note
+Users who disconnect and delete data in Privacy Settings are automatically removed from future club sync lists.
 
-Set `MAINTENANCE_CRON_TOKEN` in your deployed environment to a long random string.
+## Maintenance & Scheduling
 
-### 2. Add GitHub repository secrets
+Cleanup operations must be scheduled to run regularly. Choose one:
 
-Set these in GitHub: Settings -> Secrets and variables -> Actions -> New repository secret.
+### Option 1: GitHub Actions (Recommended for Render)
+The included `.github/workflows/maintenance.yml` automatically runs daily and can also be triggered manually.
 
-- `MAINTENANCE_BASE_URL`: your deployed app URL ending with `/`, for example
-   `https://your-app-name.onrender.com/`
-- `MAINTENANCE_CRON_TOKEN`: same value as your deployed `MAINTENANCE_CRON_TOKEN`
+**Setup:**
+1. Set `MAINTENANCE_CRON_TOKEN` in your deployed environment to a random string.
+2. Add these as GitHub repository secrets:
+   - `MAINTENANCE_BASE_URL`: your app URL (e.g., `https://your-app.onrender.com/`)
+   - `MAINTENANCE_CRON_TOKEN`: same value as above
+3. Commit and push; workflow runs automatically each day.
 
-### 3. Enable scheduled workflow
+Edit the workflow to customize cleanup frequency (default: 90-day inactivity, 3-year activity retention).
 
-The workflow file `.github/workflows/maintenance.yml` runs daily and can also be run manually via
-Actions -> Scheduled Maintenance -> Run workflow.
+### Option 2: Manual / Local Scheduler
+For development or self-hosted deployments, run cleanup commands on a schedule:
 
-It triggers:
-
-- `cleanup-inactive` with `days=90`
-- `cleanup-activities` with `years=3`
-
-You can tune these values by editing `.github/workflows/maintenance.yml`.
-
-## Deployment Guide
-
-Automatic inactive-user cleanup does not schedule itself. The cleanup command exists in the app,
-but a scheduler must run it in the target environment.
-
-Recommended cleanup command:
-
+```bash
+# Daily via Windows Task Scheduler, Linux cron, or platform-specific scheduler
 python main.py cleanup-inactive --days 90 --execute --revoke
-
-Recommended activity retention command:
-
 python main.py cleanup-activities --years 3 --execute
+```
 
-### Step 1: Validate before automation
+Always dry-run first to verify output before enabling `--execute`.
 
-Run dry-run first and inspect output:
+## GitHub Pages Legal Documentation
 
-python main.py cleanup-inactive --days 90
-python main.py cleanup-activities --years 3
+This repository includes public legal pages in the `docs/` folder:
+- `docs/index.html` — Home page with app overview
+- `docs/about.html` — Feature description and technical details
+- `docs/privacy.html` — Privacy policy
+- `docs/terms.html` — Terms of service
+- `docs/data-deletion.html` — Data deletion instructions
 
-Only after validating the output, enable --execute.
+These are automatically published to GitHub Pages. Configure in repository Settings → Pages:
+- Source: `Deploy from a branch`
+- Branch: `main`
+- Folder: `/docs`
 
-### Step 2: Choose scheduler by deployment target
+Use the published URLs in your Strava app settings and dashboard configuration (see `.env.example`).
 
-1. Local Windows machine:
-   Use Windows Task Scheduler to run the command daily (for example at 03:30).
+## Development
 
-2. Linux VM or dedicated server:
-   Use cron/systemd timer to run the command daily.
+### Code Quality
 
-3. Managed hosting / PaaS / container platform:
-   Use a dedicated scheduled job or worker (platform cron feature). Do not rely on the web app
-   process itself.
+Run all checks:
+```bash
+ruff check .          # Lint
+ruff format .         # Auto-format
+mypy app              # Type checking
+pytest                # Run tests
+```
 
-4. Serverless hosting:
-   Use cloud scheduler that triggers a cleanup worker/job.
+Pre-commit hooks run automatically on `git commit` (same checks as above).
 
-### Step 3: Production safety checks
-
-- Ensure only one scheduler instance runs cleanup (avoid duplicate execution in multi-instance deployments).
-- Log command output and monitor failures.
-- Keep cleanup as a separate scheduled worker process, not tied to dashboard requests.
-- Keep export/delete commands available for user data requests:
-
-python main.py export-user-data --verified-user-id 123456 --output exports/user_123456.json
-python main.py forget-user --verified-user-id 123456 --revoke
-
-### Step 4: Go-live checklist
-
-1. Dry-run output reviewed.
-2. Scheduled job configured.
-3. Logs confirmed after first automatic run.
-4. Privacy policy and support contact published for user data requests.
-
-## GitHub Pages Site (About, Privacy, Terms, Deletion)
-
-This repository includes a static site under `docs/` for Strava app review and user transparency.
-
-Included pages:
-
-- `docs/index.html` — landing page
-- `docs/about.html` — app description and how it works
-- `docs/privacy.html` — privacy policy
-- `docs/terms.html` — terms of service
-- `docs/data-deletion.html` — data deletion instructions
-
-### Enable GitHub Pages
-
-1. Push your branch to GitHub.
-2. Open repository Settings -> Pages.
-3. Under Build and deployment:
-   - Source: Deploy from a branch
-   - Branch: `main` (or your default branch)
-   - Folder: `/docs`
-4. Save and wait for the Pages URL to be published.
-
-### Configure Strava settings with published URLs
-
-Use your published GitHub Pages URLs for:
-
-- Website URL → `index.html` or `about.html`
-- Privacy Policy URL → `privacy.html`
-- Terms URL → `terms.html`
-- Data Deletion URL → `data-deletion.html`
-
-Keep your OAuth callback URL pointed at your deployed dashboard app URL (not GitHub Pages).
-
-### Before publishing
-
-Replace the GitHub repository link placeholder in `docs/privacy.html` (Section 10 Open Source) with your actual repository URL.
-
-## Quality Checks
-
-ruff check .
-mypy app
-pytest
+### Project Structure
+```
+app/
+  config.py           # Settings & environment variables
+  dashboard/          # Streamlit UI components
+  services/           # Sync & metrics logic
+  storage/            # SQLite repositories & encryption
+  strava/             # Strava API client
+docs/                 # GitHub Pages legal site
+tests/                # Test suite
+```
 
 ## License
 
-This project is licensed under the MIT License. See `LICENSE`.
-
-## Notes
-
-- The app stores local data in data/strava_cache.db.
-- Re-running sync updates existing activities and avoids duplicates.
-- Sync is intentionally paced between pages to reduce API burst risk. Tune SYNC_PAGE_DELAY_SECONDS and SYNC_MAX_PAGES in .env if needed.
-- Dashboard auto-sync policy can be tuned via AUTO_SYNC_ENABLED, AUTO_SYNC_STALENESS_HOURS, and MANUAL_SYNC_COOLDOWN_SECONDS.
-- Sync progress is logged (page fetches, totals, and token refresh events). Set LOG_LEVEL in .env (for example INFO or DEBUG).
-- Configure SUPPORT_CONTACT_EMAIL in .env so users can reach you for privacy/data requests.
-- Configure `PRIVACY_POLICY_URL`, `TERMS_URL`, and `DATA_DELETION_URL` in .env to show public legal links in `Privacy Settings`.
-- This is a small hobby project shared selectively with friends and communities. While the
-  deployed app is technically accessible to anyone, it is not marketed for broad public use.
-  Exercise discretion when sharing and avoid public announcements or marketing.
-- Data handling: the app stores OAuth account identity, token metadata, and synced activity records locally in SQLite for analytics.
-- Inactivity cleanup: use `cleanup-inactive` regularly to remove inactive users and reduce retained personal data.
-- Activity retention cleanup: use `cleanup-activities` to remove activity records older than your retention window.
-- Data subject operations: use `export-user-data` for access/export requests and `forget-user` for delete requests.
-- DSAR audit logging: export and delete actions are recorded in `dsar_audit_log` for compliance evidence.
-- OAuth token secrets are encrypted at rest using `TOKEN_ENCRYPTION_KEY`.
-- Scheduled maintenance trigger requests require `MAINTENANCE_CRON_TOKEN`.
-- Keep .env private. The .gitignore already excludes it.
+This project is licensed under the MIT License. See [`LICENSE`](LICENSE).
