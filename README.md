@@ -141,7 +141,7 @@ The included `.github/workflows/maintenance.yml` automatically runs daily and ca
 **Setup:**
 1. Set `MAINTENANCE_CRON_TOKEN` in your deployed environment to a random string.
 2. Add these as GitHub repository secrets:
-   - `MAINTENANCE_BASE_URL`: your app URL (e.g., `https://your-app.onrender.com/`)
+  - `MAINTENANCE_BASE_URL`: your app URL only, with no query string (e.g., `https://your-app.onrender.com`)
    - `MAINTENANCE_CRON_TOKEN`: same value as above
 3. Commit and push; workflow runs automatically each day.
 

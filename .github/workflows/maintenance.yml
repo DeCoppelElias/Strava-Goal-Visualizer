@@ -14,13 +14,39 @@ jobs:
           MAINTENANCE_BASE_URL: ${{ secrets.MAINTENANCE_BASE_URL }}
           MAINTENANCE_CRON_TOKEN: ${{ secrets.MAINTENANCE_CRON_TOKEN }}
         run: |
-          curl -sSf --retry 4 --retry-delay 15 --max-time 300 \
-            "${MAINTENANCE_BASE_URL}?maintenance_action=cleanup-inactive&days=90&maintenance_token=${MAINTENANCE_CRON_TOKEN}"
+          BASE_URL="$(echo "${MAINTENANCE_BASE_URL}" | tr -d '[:space:]')"
+          HTTP_CODE=$(curl -sS --location --retry 4 --retry-delay 15 --max-time 300 \
+            --get \
+            --data-urlencode "maintenance_action=cleanup-inactive" \
+            --data-urlencode "days=90" \
+            --data-urlencode "maintenance_token=${MAINTENANCE_CRON_TOKEN}" \
+            -o /tmp/maintenance_cleanup_inactive_response.txt \
+            -w "%{http_code}" \
+            "${BASE_URL}")
+
+          cat /tmp/maintenance_cleanup_inactive_response.txt
+          if [ "${HTTP_CODE}" -ge 400 ]; then
+            echo "cleanup-inactive request failed with HTTP ${HTTP_CODE}"
+            exit 1
+          fi
 
       - name: Trigger cleanup-activities
         env:
           MAINTENANCE_BASE_URL: ${{ secrets.MAINTENANCE_BASE_URL }}
           MAINTENANCE_CRON_TOKEN: ${{ secrets.MAINTENANCE_CRON_TOKEN }}
         run: |
-          curl -sSf --retry 4 --retry-delay 15 --max-time 300 \
-            "${MAINTENANCE_BASE_URL}?maintenance_action=cleanup-activities&years=3&maintenance_token=${MAINTENANCE_CRON_TOKEN}"
+          BASE_URL="$(echo "${MAINTENANCE_BASE_URL}" | tr -d '[:space:]')"
+          HTTP_CODE=$(curl -sS --location --retry 4 --retry-delay 15 --max-time 300 \
+            --get \
+            --data-urlencode "maintenance_action=cleanup-activities" \
+            --data-urlencode "years=3" \
+            --data-urlencode "maintenance_token=${MAINTENANCE_CRON_TOKEN}" \
+            -o /tmp/maintenance_cleanup_activities_response.txt \
+            -w "%{http_code}" \
+            "${BASE_URL}")
+
+          cat /tmp/maintenance_cleanup_activities_response.txt
+          if [ "${HTTP_CODE}" -ge 400 ]; then
+            echo "cleanup-activities request failed with HTTP ${HTTP_CODE}"
+            exit 1
+          fi
