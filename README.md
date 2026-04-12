@@ -1,6 +1,6 @@
-# Strava Club Visualizer
+# Goal Visualizer
 
-A small Python project that syncs OAuth-authorized Strava run activities into SQLite and visualizes year-to-date progress toward a per-athlete goal (default: 365 km).
+A privacy-first analytics dashboard that syncs OAuth-authorized Strava run activities into SQLite and visualizes year-to-date progress toward a per-athlete goal (default: 365 km).
 
 ## Features
 
@@ -194,16 +194,17 @@ python main.py forget-user --verified-user-id 123456 --revoke
 3. Logs confirmed after first automatic run.
 4. Privacy policy and support contact published for user data requests.
 
-## GitHub Pages Legal Site (Privacy/Terms/Deletion)
+## GitHub Pages Site (About, Privacy, Terms, Deletion)
 
-This repository includes a static legal site under `docs/` for Strava review links.
+This repository includes a static site under `docs/` for Strava app review and user transparency.
 
 Included pages:
 
-- `docs/index.html`
-- `docs/privacy.html`
-- `docs/terms.html`
-- `docs/data-deletion.html`
+- `docs/index.html` — landing page
+- `docs/about.html` — app description and how it works
+- `docs/privacy.html` — privacy policy
+- `docs/terms.html` — terms of service
+- `docs/data-deletion.html` — data deletion instructions
 
 ### Enable GitHub Pages
 
@@ -219,18 +220,16 @@ Included pages:
 
 Use your published GitHub Pages URLs for:
 
-- Privacy Policy URL -> `privacy.html`
-- Terms URL -> `terms.html`
-- Data Deletion URL -> `data-deletion.html`
+- Website URL → `index.html` or `about.html`
+- Privacy Policy URL → `privacy.html`
+- Terms URL → `terms.html`
+- Data Deletion URL → `data-deletion.html`
 
 Keep your OAuth callback URL pointed at your deployed dashboard app URL (not GitHub Pages).
 
 ### Before publishing
 
-Replace placeholders in the legal pages:
-
-- `YOUR-SUPPORT-EMAIL`
-- `YOUR-APP-URL`
+Replace the GitHub repository link placeholder in `docs/privacy.html` (Section 10 Open Source) with your actual repository URL.
 
 ## Quality Checks
 

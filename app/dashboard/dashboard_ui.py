@@ -550,6 +550,15 @@ def run_dashboard() -> None:
         st.sidebar.caption("No connected accounts yet")
         st.sidebar.caption("Connect accounts to sync and visualize data")
 
+    # Sidebar footer with links to public site pages
+    privacy_policy_url = getattr(settings, "privacy_policy_url", "") or ""
+    if privacy_policy_url:
+        about_url = privacy_policy_url.rsplit("/", 1)[0] + "/about.html"
+        st.sidebar.markdown("---")
+        st.sidebar.caption(
+            f"[About Goal Visualizer]({about_url}) · " f"[Privacy]({privacy_policy_url})"
+        )
+
     if screen == "Privacy Settings":
         render_privacy_settings(
             settings,

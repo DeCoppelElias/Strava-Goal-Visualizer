@@ -21,6 +21,11 @@ def _legal_links(settings: Any) -> None:
     terms_url = str(getattr(settings, "terms_url", "") or "").strip()
     deletion_url = str(getattr(settings, "data_deletion_url", "") or "").strip()
 
+    # Derive about page URL from the same GitHub Pages base as privacy policy
+    about_url = ""
+    if policy_url:
+        about_url = policy_url.rsplit("/", 1)[0] + "/about.html"
+
     has_all_links = bool(policy_url and terms_url and deletion_url)
     if not has_all_links:
         st.info(
@@ -28,7 +33,10 @@ def _legal_links(settings: Any) -> None:
             "to publish external legal links here."
         )
 
-    col_policy, col_terms, col_deletion = st.columns(3)
+    col_about, col_policy, col_terms, col_deletion = st.columns(4)
+    with col_about:
+        if about_url:
+            st.link_button("About this app", about_url, use_container_width=True)
     with col_policy:
         if policy_url:
             st.link_button("Privacy policy", policy_url, use_container_width=True)
