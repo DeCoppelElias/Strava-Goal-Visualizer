@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from app.storage.sqlite_protocol import SQLiteRepositoryProtocol
@@ -211,3 +211,68 @@ class SQLiteOAuthMixin(SQLiteRepositoryProtocol):
             }
             for row in rows
         ]
+
+    def list_oauth_accounts_in_club(self, club_id: int) -> list[dict[str, Any]]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT
+                    t.verified_user_id,
+                    v.firstname,
+                    v.lastname,
+                    t.last_sync_utc
+                FROM oauth_tokens t
+                JOIN verified_users v ON v.verified_user_id = t.verified_user_id
+                JOIN verified_user_clubs c ON c.verified_user_id = t.verified_user_id
+                WHERE c.club_id = ?
+                ORDER BY v.firstname, v.lastname
+                """,
+                (club_id,),
+            ).fetchall()
+        return [
+            {
+                "verified_user_id": row[0],
+                "firstname": row[1],
+                "lastname": row[2],
+                "last_sync_utc": row[3],
+            }
+            for row in rows
+        ]
+
+    def save_pending_oauth_state(self, state: str, ttl_seconds: int = 600) -> None:
+        now = datetime.now(UTC)
+        expires_at = (now + timedelta(seconds=ttl_seconds)).isoformat()
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO oauth_pending_states (state, expires_at, created_at)
+                VALUES (?, ?, ?)
+                """,
+                (state, expires_at, now.isoformat()),
+            )
+            conn.commit()
+
+    def consume_pending_oauth_state(self, state: str) -> bool:
+        now = datetime.now(UTC).isoformat()
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT expires_at FROM oauth_pending_states WHERE state = ?",
+                (state,),
+            ).fetchone()
+            conn.execute(
+                "DELETE FROM oauth_pending_states WHERE state = ?",
+                (state,),
+            )
+            conn.commit()
+        if row is None:
+            return False
+        return str(row[0]) >= now
+
+    def purge_expired_oauth_states(self) -> None:
+        now = datetime.now(UTC).isoformat()
+        with self._connect() as conn:
+            conn.execute(
+                "DELETE FROM oauth_pending_states WHERE expires_at < ?",
+                (now,),
+            )
+            conn.commit()

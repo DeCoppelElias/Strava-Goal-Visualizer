@@ -13,14 +13,8 @@ def build_activity_scope_clause(
     params: list[Any] = []
 
     if verified_user_id is not None:
-        clause += (
-            f" AND ({athlete_column} = ? OR {athlete_column} IN ("
-            "SELECT l.club_athlete_id "
-            "FROM athlete_identity_links l "
-            "WHERE l.verified_user_id = ?"
-            "))"
-        )
-        params.extend([verified_user_id, verified_user_id])
+        clause += f" AND {athlete_column} = ?"
+        params.append(verified_user_id)
 
     if club_id is not None:
         clause += (
@@ -28,9 +22,15 @@ def build_activity_scope_clause(
             "SELECT t.verified_user_id "
             "FROM oauth_tokens t "
             "JOIN verified_user_clubs c ON c.verified_user_id = t.verified_user_id "
+            "WHERE c.club_id = ? "
+            "UNION "
+            "SELECT l.club_athlete_id "
+            "FROM athlete_identity_links l "
+            "JOIN oauth_tokens t ON t.verified_user_id = l.verified_user_id "
+            "JOIN verified_user_clubs c ON c.verified_user_id = t.verified_user_id "
             "WHERE c.club_id = ?"
             ")"
         )
-        params.append(club_id)
+        params.extend([club_id, club_id])
 
     return clause, params

@@ -117,6 +117,15 @@ class SQLiteSchemaMixin(SQLiteRepositoryProtocol):
                 )
                 """
             )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS oauth_pending_states (
+                    state TEXT PRIMARY KEY,
+                    expires_at TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                )
+                """
+            )
 
             conn.execute(
                 """

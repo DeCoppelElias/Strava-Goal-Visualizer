@@ -2,10 +2,23 @@ from __future__ import annotations
 
 import logging
 import time
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from typing import Any
 
 import requests
+
+from app.strava.constants import (
+    DEFAULT_BASE_URL,
+    DEFAULT_INITIAL_BACKOFF_SECONDS,
+    DEFAULT_MAX_RETRY_ATTEMPTS,
+    DEFAULT_OAUTH_DEAUTHORIZE_URL,
+    DEFAULT_OAUTH_URL,
+    DEFAULT_RATE_LIMIT_AUTO_WAIT_MAX_SECONDS,
+    DEFAULT_TIMEOUT_SECONDS,
+    DEFAULT_TOKEN_EXPIRY_SKEW_SECONDS,
+    TRANSIENT_HTTP_STATUS_CODES,
+)
+from app.strava.rate_limits import get_rate_limit_wait_seconds
 
 logger = logging.getLogger(__name__)
 
@@ -21,9 +34,9 @@ class StravaRateLimitError(StravaClientError):
 
 
 class StravaClient:
-    BASE_URL = "https://www.strava.com/api/v3"
-    OAUTH_URL = "https://www.strava.com/oauth/token"
-    OAUTH_DEAUTHORIZE_URL = "https://www.strava.com/oauth/deauthorize"
+    BASE_URL = DEFAULT_BASE_URL
+    OAUTH_URL = DEFAULT_OAUTH_URL
+    OAUTH_DEAUTHORIZE_URL = DEFAULT_OAUTH_DEAUTHORIZE_URL
 
     def __init__(
         self,
@@ -33,7 +46,14 @@ class StravaClient:
         client_secret: str | None = None,
         refresh_token: str | None = None,
         access_token_expires_at: int | None = None,
-        timeout_seconds: int = 20,
+        timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS,
+        base_url: str = DEFAULT_BASE_URL,
+        oauth_url: str = DEFAULT_OAUTH_URL,
+        oauth_deauthorize_url: str = DEFAULT_OAUTH_DEAUTHORIZE_URL,
+        max_retry_attempts: int = DEFAULT_MAX_RETRY_ATTEMPTS,
+        initial_backoff_seconds: float = DEFAULT_INITIAL_BACKOFF_SECONDS,
+        token_expiry_skew_seconds: int = DEFAULT_TOKEN_EXPIRY_SKEW_SECONDS,
+        rate_limit_auto_wait_max_seconds: int = DEFAULT_RATE_LIMIT_AUTO_WAIT_MAX_SECONDS,
     ) -> None:
         self._session = requests.Session()
         self._access_token = access_token
@@ -41,6 +61,13 @@ class StravaClient:
         self._client_secret = client_secret
         self._refresh_token = refresh_token
         self._access_token_expires_at = access_token_expires_at
+        self._base_url = base_url
+        self._oauth_url = oauth_url
+        self._oauth_deauthorize_url = oauth_deauthorize_url
+        self._max_retry_attempts = max(1, max_retry_attempts)
+        self._initial_backoff_seconds = max(0.0, initial_backoff_seconds)
+        self._token_expiry_skew_seconds = max(0, token_expiry_skew_seconds)
+        self._rate_limit_auto_wait_max_seconds = max(0, rate_limit_auto_wait_max_seconds)
         if access_token:
             self._session.headers.update({"Authorization": f"Bearer {access_token}"})
         self._timeout_seconds = timeout_seconds
@@ -49,7 +76,7 @@ class StravaClient:
         """Fetch profile of authenticated user: {id, firstname, lastname, email, ...}."""
         response = self._request_with_retry(
             "GET",
-            f"{self.BASE_URL}/athlete",
+            f"{self._base_url}/athlete",
         )
         payload = response.json()
         if not isinstance(payload, dict):
@@ -89,7 +116,7 @@ class StravaClient:
 
             response = self._request_with_retry(
                 "GET",
-                f"{self.BASE_URL}/athlete/activities",
+                f"{self._base_url}/athlete/activities",
                 params=params,
             )
             page_payload = response.json()
@@ -146,7 +173,7 @@ class StravaClient:
         self._ensure_access_token()
 
         response = self._session.post(
-            self.OAUTH_DEAUTHORIZE_URL,
+            self._oauth_deauthorize_url,
             timeout=self._timeout_seconds,
         )
         if response.status_code >= 400:
@@ -161,11 +188,12 @@ class StravaClient:
         url: str,
         *,
         params: dict[str, Any] | None = None,
-        max_attempts: int = 4,
+        max_attempts: int | None = None,
     ) -> requests.Response:
-        backoff_seconds = 1.0
+        effective_max_attempts = max_attempts or self._max_retry_attempts
+        backoff_seconds = self._initial_backoff_seconds
 
-        for attempt in range(1, max_attempts + 1):
+        for attempt in range(0, effective_max_attempts):
             self._ensure_access_token()
 
             response = self._session.request(
@@ -178,18 +206,17 @@ class StravaClient:
             if response.status_code < 400:
                 return response
 
-            if (
-                response.status_code == 401
-                and self._has_refresh_credentials()
-                and attempt < max_attempts
-            ):
+            if response.status_code == 401 and self._has_refresh_credentials():
                 logger.warning("Received 401, refreshing access token and retrying request")
                 self._refresh_access_token()
                 continue
 
             if response.status_code == 429:
-                wait_seconds = self._get_rate_limit_wait_seconds(response)
-                if wait_seconds is not None and wait_seconds <= 90 and attempt < max_attempts:
+                wait_seconds = get_rate_limit_wait_seconds(response)
+                if (
+                    wait_seconds is not None
+                    and wait_seconds <= self._rate_limit_auto_wait_max_seconds
+                ):
                     time.sleep(float(wait_seconds))
                     continue
 
@@ -205,12 +232,12 @@ class StravaClient:
                     retry_after_seconds=wait_seconds,
                 )
 
-            if response.status_code in {500, 502, 503, 504} and attempt < max_attempts:
+            if response.status_code in TRANSIENT_HTTP_STATUS_CODES:
                 logger.warning(
                     "Transient Strava API error status=%s on attempt=%s/%s, retrying in %.1fs",
                     response.status_code,
                     attempt,
-                    max_attempts,
+                    effective_max_attempts,
                     backoff_seconds,
                 )
                 time.sleep(backoff_seconds)
@@ -243,7 +270,7 @@ class StravaClient:
         if self._access_token_expires_at is None:
             return False
         now_epoch = int(datetime.now(UTC).timestamp())
-        return now_epoch >= (self._access_token_expires_at - 60)
+        return now_epoch >= (self._access_token_expires_at - self._token_expiry_skew_seconds)
 
     def _refresh_access_token(self) -> None:
         if not self._has_refresh_credentials():
@@ -252,7 +279,7 @@ class StravaClient:
         logger.info("Refreshing Strava access token")
 
         response = self._session.post(
-            self.OAUTH_URL,
+            self._oauth_url,
             data={
                 "client_id": str(self._client_id),
                 "client_secret": self._client_secret,
@@ -287,62 +314,3 @@ class StravaClient:
         if isinstance(expires_at, int):
             self._access_token_expires_at = expires_at
             logger.info("Access token refreshed (expires_at=%s)", expires_at)
-
-    def _get_rate_limit_wait_seconds(self, response: requests.Response) -> int | None:
-        retry_after_header = response.headers.get("Retry-After")
-        if retry_after_header and retry_after_header.isdigit():
-            return max(1, int(retry_after_header))
-
-        now_utc = datetime.now(UTC)
-
-        for reset_header_name in ("X-ReadRateLimit-Reset", "X-RateLimit-Reset"):
-            reset_value = response.headers.get(reset_header_name)
-            if reset_value and reset_value.isdigit():
-                reset_time = datetime.fromtimestamp(int(reset_value), tz=UTC)
-                return max(1, int((reset_time - now_utc).total_seconds()))
-
-        usage_header = response.headers.get("X-RateLimit-Usage")
-        limit_header = response.headers.get("X-RateLimit-Limit")
-        if usage_header and limit_header:
-            usage = self._parse_rate_header_pair(usage_header)
-            limit = self._parse_rate_header_pair(limit_header)
-            if usage is not None and limit is not None:
-                short_usage, long_usage = usage
-                short_limit, long_limit = limit
-
-                if short_usage >= short_limit:
-                    return self._seconds_to_next_quarter_hour(now_utc)
-
-                if long_usage >= long_limit:
-                    today_start = datetime(
-                        now_utc.year,
-                        now_utc.month,
-                        now_utc.day,
-                        tzinfo=UTC,
-                    )
-                    tomorrow = today_start + timedelta(days=1)
-                    return max(1, int((tomorrow - now_utc).total_seconds()))
-
-        return None
-
-    def _parse_rate_header_pair(self, value: str) -> tuple[int, int] | None:
-        parts = value.split(",")
-        if len(parts) != 2:
-            return None
-        try:
-            return int(parts[0].strip()), int(parts[1].strip())
-        except ValueError:
-            return None
-
-    def _seconds_to_next_quarter_hour(self, now_utc: datetime) -> int:
-        minute_bucket = (now_utc.minute // 15) + 1
-        next_minute = minute_bucket * 15
-        base_hour = datetime(
-            now_utc.year,
-            now_utc.month,
-            now_utc.day,
-            now_utc.hour,
-            tzinfo=UTC,
-        )
-        next_window = base_hour + timedelta(minutes=next_minute)
-        return max(1, int((next_window - now_utc).total_seconds()))

@@ -112,13 +112,13 @@ class SQLiteUserMixin(SQLiteRepositoryProtocol):
                 "DELETE FROM verified_user_clubs WHERE verified_user_id = ?",
                 (verified_user_id,),
             )
-            for club_id in unique_club_ids:
-                conn.execute(
+            if unique_club_ids:
+                conn.executemany(
                     """
                     INSERT INTO verified_user_clubs (verified_user_id, club_id, updated_at)
                     VALUES (?, ?, ?)
                     """,
-                    (verified_user_id, club_id, now),
+                    [(verified_user_id, club_id, now) for club_id in unique_club_ids],
                 )
             conn.commit()
 

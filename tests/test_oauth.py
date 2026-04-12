@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 import requests
 
-from app.strava.models import canonical_athlete_name, fuzzy_name_match
+from app.strava.models import canonical_athlete_name
 from app.strava.oauth import (
     StravaOAuthError,
     build_authorize_url,
@@ -162,62 +163,124 @@ class TestCanonicalAthleteName:
         assert canonical_athlete_name("", "") == "unknown"
 
 
-class TestFuzzyNameMatch:
-    """Tests for fuzzy name matching (handles abbreviated surnames)."""
+class TestPendingOAuthState:
+    """Tests for short-lived OAuth state persistence used by web redirect flow."""
 
-    def test_fuzzy_match_exact(self) -> None:
-        """Exact canonical match should return 1.0."""
-        confidence = fuzzy_name_match("jane williams", "Jane", "Williams")
-        assert confidence == 1.0
+    def test_consume_valid_state_returns_true(self, tmp_path: Path) -> None:
+        from app.storage.sqlite import SQLiteRepository
 
-    def test_fuzzy_match_case_insensitive(self) -> None:
-        """Should ignore case."""
-        confidence = fuzzy_name_match("JANE WILLIAMS", "jane", "williams")
-        assert confidence == 1.0
+        repo = SQLiteRepository(tmp_path / "cache.db")
+        repo.initialize()
+        repo.save_pending_oauth_state("abc123", ttl_seconds=60)
+        assert repo.consume_pending_oauth_state("abc123") is True
 
-    def test_fuzzy_match_abbreviated_last_name(self) -> None:
-        """Should match 'jane w' with 'Jane' 'Williams' (confidence 0.95)."""
-        confidence = fuzzy_name_match("jane w", "Jane", "Williams")
-        assert confidence == 0.95
+    def test_consume_unknown_state_returns_false(self, tmp_path: Path) -> None:
+        from app.storage.sqlite import SQLiteRepository
 
-    def test_fuzzy_match_abbreviated_last_name_with_period(self) -> None:
-        """Should match 'jane w.' with 'Jane' 'Williams'."""
-        confidence = fuzzy_name_match("jane w.", "Jane", "Williams")
-        assert confidence == 0.95
+        repo = SQLiteRepository(tmp_path / "cache.db")
+        repo.initialize()
+        assert repo.consume_pending_oauth_state("not-saved") is False
 
-    def test_fuzzy_match_abbreviated_strava_example(self) -> None:
-        """Real Strava case: club activity with 'Jane W.' should match verified 'Jane Williams'."""
-        confidence = fuzzy_name_match("Jane W.", "Jane", "Williams")
-        assert confidence == 0.95
+    def test_consume_state_is_single_use(self, tmp_path: Path) -> None:
+        from app.storage.sqlite import SQLiteRepository
 
-    def test_fuzzy_match_no_match(self) -> None:
-        """Unrelated names should return 0.0."""
-        confidence = fuzzy_name_match("john smith", "Jane", "Williams")
-        assert confidence == 0.0
+        repo = SQLiteRepository(tmp_path / "cache.db")
+        repo.initialize()
+        repo.save_pending_oauth_state("xyz", ttl_seconds=60)
+        assert repo.consume_pending_oauth_state("xyz") is True
+        assert repo.consume_pending_oauth_state("xyz") is False
 
-    def test_fuzzy_match_first_name_fuzzy_with_initial(self) -> None:
-        """Fuzzy first-name match is strict (1 char editdist + length diff).
+    def test_consume_expired_state_returns_false(self, tmp_path: Path) -> None:
+        import sqlite3
+        from datetime import UTC, datetime, timedelta
 
-        "jon" vs "john": 1 char mismatch + 1 length diff = too many errors.
-        This is actually not fuzzy enough for common scenarios.
-        Test adjusted to document current behavior.
-        """
-        confidence = fuzzy_name_match("jon w", "John", "Williams")
-        # Current logic: "jon" vs "john" = 2 total differences (too strict)
-        assert confidence == 0.0  # Too different; requires more relaxed logic
+        from app.storage.sqlite import SQLiteRepository
 
-    def test_fuzzy_match_first_name_exact_initial(self) -> None:
-        """Should handle exact first name + last initial."""
-        confidence = fuzzy_name_match("jane w", "jane", "williams")
-        assert confidence == 0.95
+        repo = SQLiteRepository(tmp_path / "cache.db")
+        repo.initialize()
+        # Insert already-expired state directly
+        past = (datetime.now(UTC) - timedelta(seconds=10)).isoformat()
+        conn = sqlite3.connect(tmp_path / "cache.db")
+        conn.execute(
+            "INSERT INTO oauth_pending_states (state, expires_at, created_at) VALUES (?, ?, ?)",
+            ("expired", past, past),
+        )
+        conn.commit()
+        conn.close()
+        assert repo.consume_pending_oauth_state("expired") is False
 
-    def test_fuzzy_match_multiple_middle_names(self) -> None:
-        """Should handle first name + middle + last initial."""
-        confidence = fuzzy_name_match("jane marie w", "Jane", "Williams")
-        # Should not match (too many parts)
-        assert confidence <= 0.5
+    def test_purge_removes_only_expired(self, tmp_path: Path) -> None:
+        import sqlite3
+        from datetime import UTC, datetime, timedelta
 
-    def test_fuzzy_match_missing_last_name(self) -> None:
-        """Should handle missing verified last name."""
-        confidence = fuzzy_name_match("jane williams", "Jane", None)
-        assert confidence <= 0.5
+        from app.storage.sqlite import SQLiteRepository
+
+        repo = SQLiteRepository(tmp_path / "cache.db")
+        repo.initialize()
+        repo.save_pending_oauth_state("fresh", ttl_seconds=600)
+        past = (datetime.now(UTC) - timedelta(seconds=10)).isoformat()
+        conn = sqlite3.connect(tmp_path / "cache.db")
+        conn.execute(
+            "INSERT INTO oauth_pending_states (state, expires_at, created_at) VALUES (?, ?, ?)",
+            ("stale", past, past),
+        )
+        conn.commit()
+        conn.close()
+
+        repo.purge_expired_oauth_states()
+
+        assert repo.consume_pending_oauth_state("fresh") is True
+        assert repo.consume_pending_oauth_state("stale") is False
+
+
+class TestBeginCompleteOAuthFlow:
+    """Tests for web OAuth redirect flow helpers."""
+
+    def test_begin_oauth_flow_raises_without_app_base_url(self, tmp_path: Path) -> None:
+        from app.config import Settings
+        from app.services.oauth_auth import begin_oauth_flow
+        from app.storage.sqlite import SQLiteRepository
+
+        settings = Settings(strava_client_id=1, strava_client_secret="s", app_base_url="")
+        repo = SQLiteRepository(tmp_path / "cache.db")
+        repo.initialize()
+
+        with pytest.raises(ValueError, match="APP_BASE_URL"):
+            begin_oauth_flow(settings, repo)
+
+    def test_begin_oauth_flow_returns_strava_url_and_saves_state(self, tmp_path: Path) -> None:
+        from app.config import Settings
+        from app.services.oauth_auth import begin_oauth_flow
+        from app.storage.sqlite import SQLiteRepository
+
+        settings = Settings(
+            strava_client_id=42,
+            strava_client_secret="secret",
+            app_base_url="https://example.onrender.com",
+        )
+        repo = SQLiteRepository(tmp_path / "cache.db")
+        repo.initialize()
+
+        url = begin_oauth_flow(settings, repo)
+
+        assert "strava.com/oauth/authorize" in url
+        assert "client_id=42" in url
+        assert "redirect_uri=https%3A%2F%2Fexample.onrender.com" in url
+        assert "state=" in url
+
+    def test_complete_oauth_flow_raises_on_invalid_state(self, tmp_path: Path) -> None:
+        from app.config import Settings
+        from app.services.oauth_auth import complete_oauth_flow
+        from app.storage.sqlite import SQLiteRepository
+        from app.strava.oauth import StravaOAuthError
+
+        settings = Settings(
+            strava_client_id=1,
+            strava_client_secret="s",
+            app_base_url="https://example.onrender.com",
+        )
+        repo = SQLiteRepository(tmp_path / "cache.db")
+        repo.initialize()
+
+        with pytest.raises(StravaOAuthError, match="Invalid or expired"):
+            complete_oauth_flow(settings, repo, code="some-code", state="never-saved")

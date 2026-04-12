@@ -54,6 +54,5 @@ def render_goal_preference(
                 max_annual_goal_km=float(settings.max_annual_goal_km),
             )
             ui.success(f"Saved annual goal: {float(goal_input_km):.1f} km")
-            st.rerun()
         except ValueError as exc:
             ui.error(f"Unable to save goal: {exc}")

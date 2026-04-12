@@ -7,7 +7,7 @@ A small Python project that syncs OAuth-authorized Strava run activities into SQ
 - OAuth-authorized athlete sync with pagination and retry handling
 - SQLite cache with idempotent upserts
 - Dashboard auto-sync when cached data is stale (default: 24 hours)
-- Manual dashboard sync action with one-hour cooldown safety guard
+- Manual dashboard sync action: personal sync in default view, club sync in club view
 - Athlete leaderboard showing progress toward 365 km
 - Per-user annual goal preference (default 365 km) with saved override
 - Year selector for dashboard analytics
@@ -94,7 +94,12 @@ When using the dashboard:
 
 - Connecting an account triggers an immediate sync for all authorized accounts.
 - Opening the dashboard auto-syncs only when data is stale (configurable).
-- Manual Sync now is rate-limited to once per hour by default.
+- In default view, `Sync yourself` syncs only your account and is rate-limited by
+   `MANUAL_SYNC_COOLDOWN_SECONDS` (one hour by default).
+- In club view (`?club_id=<id>`), `Sync club` syncs only connected members in that club.
+   Cooldown is enforced per member, so recently synced members are skipped.
+- If a user disconnects and deletes local data in `Privacy Settings`, that user is removed from
+   future club sync account lists automatically.
 - Annual goal defaults to `ANNUAL_GOAL_KM` (365 by default), and each user can save a custom goal.
 - Custom goals are capped by `MAX_ANNUAL_GOAL_KM` (default: 100000).
 - Privacy operations are available in `Privacy Settings` and require identity verification via
@@ -130,7 +135,6 @@ Actions -> Scheduled Maintenance -> Run workflow.
 
 It triggers:
 
-- `sync-authorized`
 - `cleanup-inactive` with `days=90`
 - `cleanup-activities` with `years=3`
 

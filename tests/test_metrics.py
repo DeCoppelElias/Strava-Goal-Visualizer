@@ -4,6 +4,7 @@ import pandas as pd
 
 from app.services.metrics import (
     athlete_progress_table,
+    club_completion_summary,
     club_summary,
     cumulative_distance_progress,
     one_km_per_day_guide,
@@ -88,6 +89,30 @@ def test_club_summary_aggregates_totals() -> None:
     assert round(summary.total_distance_km, 2) == 150.0
     assert round(summary.total_goal_km, 2) == 730.0
     assert round(summary.completion_pct, 2) == round((150.0 / 730.0) * 100.0, 2)
+
+
+def test_club_completion_summary_tracks_per_athlete_progress() -> None:
+    progress = pd.DataFrame(
+        [
+            {"athlete_id": 1, "distance_km": 380.0, "goal_km": 365.0, "completion_pct": 104.11},
+            {"athlete_id": 2, "distance_km": 200.0, "goal_km": 365.0, "completion_pct": 54.79},
+            {"athlete_id": 3, "distance_km": 365.0, "goal_km": 365.0, "completion_pct": 100.0},
+        ]
+    )
+
+    summary = club_completion_summary(progress)
+
+    assert summary.athlete_count == 3
+    assert round(summary.average_completion_pct, 2) == round((104.11 + 54.79 + 100.0) / 3, 2)
+    assert summary.athletes_at_goal == 2
+
+
+def test_club_completion_summary_handles_empty_progress() -> None:
+    summary = club_completion_summary(pd.DataFrame())
+
+    assert summary.athlete_count == 0
+    assert summary.average_completion_pct == 0.0
+    assert summary.athletes_at_goal == 0
 
 
 def test_cumulative_distance_progress_builds_running_totals() -> None:

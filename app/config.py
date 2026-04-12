@@ -24,6 +24,7 @@ class Settings:
     support_contact_email: str = ""
     token_encryption_key: str = ""
     maintenance_cron_token: str = ""
+    app_base_url: str = ""
 
 
 def load_settings() -> Settings:
@@ -95,4 +96,10 @@ def load_settings() -> Settings:
         support_contact_email=os.getenv("SUPPORT_CONTACT_EMAIL", "").strip(),
         token_encryption_key=token_encryption_key,
         maintenance_cron_token=os.getenv("MAINTENANCE_CRON_TOKEN", "").strip(),
+        app_base_url=os.getenv(
+            "APP_BASE_URL",
+            os.getenv("RENDER_EXTERNAL_URL", ""),
+        )
+        .strip()
+        .rstrip("/"),
     )

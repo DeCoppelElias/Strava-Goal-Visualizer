@@ -18,62 +18,74 @@ class SQLiteActivityMixin(SQLiteRepositoryProtocol):
             return 0
 
         now = datetime.now(UTC).isoformat()
+        athlete_rows_by_id: dict[int, tuple[int, str, str]] = {}
+        activity_rows: list[tuple[Any, ...]] = []
+
+        for activity in activities:
+            athlete_rows_by_id[activity.athlete_id] = (
+                activity.athlete_id,
+                activity.athlete_name,
+                now,
+            )
+            activity_rows.append(
+                (
+                    activity.activity_id,
+                    activity.athlete_id,
+                    activity.name,
+                    activity.distance_m,
+                    activity.moving_time_s,
+                    activity.elapsed_time_s,
+                    activity.elevation_gain_m,
+                    activity.sport_type,
+                    activity.start_date_utc.isoformat(),
+                    json.dumps(activity.raw_payload),
+                    now,
+                )
+            )
+
         with self._connect() as conn:
             with closing(conn.cursor()) as cursor:
-                for activity in activities:
-                    cursor.execute(
-                        """
-                        INSERT INTO athletes (athlete_id, athlete_name, updated_at)
-                        VALUES (?, ?, ?)
-                        ON CONFLICT(athlete_id) DO UPDATE SET
-                            athlete_name = excluded.athlete_name,
-                            updated_at = excluded.updated_at
-                        """,
-                        (activity.athlete_id, activity.athlete_name, now),
-                    )
+                cursor.executemany(
+                    """
+                    INSERT INTO athletes (athlete_id, athlete_name, updated_at)
+                    VALUES (?, ?, ?)
+                    ON CONFLICT(athlete_id) DO UPDATE SET
+                        athlete_name = excluded.athlete_name,
+                        updated_at = excluded.updated_at
+                    """,
+                    list(athlete_rows_by_id.values()),
+                )
 
-                    cursor.execute(
-                        """
-                        INSERT INTO activities (
-                            activity_id,
-                            athlete_id,
-                            activity_name,
-                            distance_m,
-                            moving_time_s,
-                            elapsed_time_s,
-                            elevation_gain_m,
-                            sport_type,
-                            start_date_utc,
-                            raw_json,
-                            updated_at
-                        )
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        ON CONFLICT(activity_id) DO UPDATE SET
-                            athlete_id = excluded.athlete_id,
-                            activity_name = excluded.activity_name,
-                            distance_m = excluded.distance_m,
-                            moving_time_s = excluded.moving_time_s,
-                            elapsed_time_s = excluded.elapsed_time_s,
-                            elevation_gain_m = excluded.elevation_gain_m,
-                            sport_type = excluded.sport_type,
-                            start_date_utc = excluded.start_date_utc,
-                            raw_json = excluded.raw_json,
-                            updated_at = excluded.updated_at
-                        """,
-                        (
-                            activity.activity_id,
-                            activity.athlete_id,
-                            activity.name,
-                            activity.distance_m,
-                            activity.moving_time_s,
-                            activity.elapsed_time_s,
-                            activity.elevation_gain_m,
-                            activity.sport_type,
-                            activity.start_date_utc.isoformat(),
-                            json.dumps(activity.raw_payload),
-                            now,
-                        ),
+                cursor.executemany(
+                    """
+                    INSERT INTO activities (
+                        activity_id,
+                        athlete_id,
+                        activity_name,
+                        distance_m,
+                        moving_time_s,
+                        elapsed_time_s,
+                        elevation_gain_m,
+                        sport_type,
+                        start_date_utc,
+                        raw_json,
+                        updated_at
                     )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(activity_id) DO UPDATE SET
+                        athlete_id = excluded.athlete_id,
+                        activity_name = excluded.activity_name,
+                        distance_m = excluded.distance_m,
+                        moving_time_s = excluded.moving_time_s,
+                        elapsed_time_s = excluded.elapsed_time_s,
+                        elevation_gain_m = excluded.elevation_gain_m,
+                        sport_type = excluded.sport_type,
+                        start_date_utc = excluded.start_date_utc,
+                        raw_json = excluded.raw_json,
+                        updated_at = excluded.updated_at
+                    """,
+                    activity_rows,
+                )
             conn.commit()
 
         return len(activities)

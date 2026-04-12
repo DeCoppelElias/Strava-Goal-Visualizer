@@ -193,21 +193,42 @@ class SQLitePrivacyMixin(SQLiteRepositoryProtocol):
             )
             conn.commit()
 
-    def list_dsar_events(self) -> list[dict[str, Any]]:
+    def list_dsar_events(self, *, limit: int | None = None) -> list[dict[str, Any]]:
+        if limit is not None and limit < 1:
+            return []
+
         with self._connect() as conn:
-            rows = conn.execute(
-                """
-                SELECT
-                    event_id,
-                    verified_user_id,
-                    event_type,
-                    request_source,
-                    details_json,
-                    created_at
-                FROM dsar_audit_log
-                ORDER BY event_id ASC
-                """
-            ).fetchall()
+            if limit is None:
+                rows = conn.execute(
+                    """
+                    SELECT
+                        event_id,
+                        verified_user_id,
+                        event_type,
+                        request_source,
+                        details_json,
+                        created_at
+                    FROM dsar_audit_log
+                    ORDER BY event_id ASC
+                    """
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """
+                    SELECT
+                        event_id,
+                        verified_user_id,
+                        event_type,
+                        request_source,
+                        details_json,
+                        created_at
+                    FROM dsar_audit_log
+                    ORDER BY event_id DESC
+                    LIMIT ?
+                    """,
+                    (limit,),
+                ).fetchall()
+                rows.reverse()
         return [
             {
                 "event_id": row[0],

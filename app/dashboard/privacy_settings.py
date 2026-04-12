@@ -6,9 +6,10 @@ from typing import Any
 
 import streamlit as st
 
+from app.services.account_lifecycle import revoke_account_if_requested
 from app.services.oauth_auth import authorize_and_store_user
 from app.storage.sqlite import SQLiteRepository
-from app.strava.client import StravaClient, StravaClientError
+from app.strava.client import StravaClientError
 from app.strava.oauth import StravaOAuthError
 
 
@@ -46,24 +47,13 @@ def _disconnect_and_delete_user(
 
     account = repository.get_oauth_account_by_verified_user_id(verified_user_id)
     if account is not None:
-        try:
-            client = StravaClient(
-                access_token=account.get("access_token")
-                if isinstance(account.get("access_token"), str)
-                else None,
-                client_id=settings.strava_client_id,
-                client_secret=settings.strava_client_secret,
-                refresh_token=account.get("refresh_token")
-                if isinstance(account.get("refresh_token"), str)
-                else None,
-                access_token_expires_at=account.get("access_token_expires_at")
-                if isinstance(account.get("access_token_expires_at"), int)
-                else None,
-                timeout_seconds=settings.request_timeout_seconds,
-            )
-            client.deauthorize()
-        except StravaClientError as exc:
-            revoke_warning = str(exc)
+        revoked, revoke_error = revoke_account_if_requested(
+            settings,
+            account,
+            revoke=True,
+        )
+        if not revoked:
+            revoke_warning = revoke_error
 
     deleted = repository.delete_verified_user_data(
         verified_user_id,
@@ -196,6 +186,7 @@ def render_privacy_settings(
                 f"activities={deleted['activities']}."
             )
             clear_viewer_session()
+            st.rerun()
 
     if not has_any_account:
         st.info("No connected accounts remain in local storage.")

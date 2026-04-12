@@ -27,44 +27,6 @@ def _coerce_int(value: Any) -> int | None:
         return None
 
 
-def fuzzy_name_match(
-    club_name: str,
-    verified_firstname: str | None,
-    verified_lastname: str | None,
-) -> float:
-    """
-    Returns confidence score [0.0-1.0] for whether club_name matches verified user.
-    Handles abbreviated surnames like "Jane W." matching "Jane Williams".
-    """
-    club = club_name.lower().strip()
-    first = (verified_firstname or "").lower().strip()
-    last = (verified_lastname or "").lower().strip()
-
-    # Exact match on canonical form
-    if club == canonical_athlete_name(verified_firstname, verified_lastname):
-        return 1.0
-
-    # First name exact + last initial match (e.g., "jane w." == "jane w")
-    last_initial = last[0] if last else ""
-    if club == f"{first} {last_initial}" or club == f"{first} {last_initial}.":
-        return 0.95
-
-    # First name fuzzy (allow 1 char diff) + last initial
-    if abs(len(club.split()) - 2) <= 1:  # Has at least firstname + last-initial
-        parts = club.split()
-        if len(parts) >= 2:
-            club_first = parts[0]
-            club_last = parts[1].rstrip(".")
-            # Simple edit distance: allow 1-char difference in first name
-            first_diff = sum(a != b for a, b in zip(club_first, first, strict=False)) + abs(
-                len(club_first) - len(first)
-            )
-            if first_diff <= 1 and club_last == last_initial:
-                return 0.85
-
-    return 0.0
-
-
 @dataclass(frozen=True)
 class ClubActivity:
     activity_id: int

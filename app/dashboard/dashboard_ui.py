@@ -5,19 +5,29 @@ from typing import Any
 
 import altair as alt
 import streamlit as st
+import streamlit.components.v1 as components
 
 from app.config import load_settings
 from app.dashboard.goal_preferences import render_goal_preference
 from app.dashboard.privacy_settings import render_privacy_settings
 from app.maintenance.runner import handle_maintenance_request
+from app.services import oauth_auth
+from app.services.dashboard_data import available_years, fetch_view_activities, fetch_view_goal_map
+from app.services.dashboard_sync import (
+    account_last_sync_utc,
+    latest_sync_utc,
+    manual_sync_cooldown_remaining_seconds,
+    parse_last_sync_utc,
+    run_sync_for_club_members,
+    run_sync_for_viewer,
+)
 from app.services.metrics import (
     athlete_progress_table,
+    club_completion_summary,
     club_summary,
     cumulative_distance_progress,
     one_km_per_day_guide,
 )
-from app.services.oauth_auth import authorize_and_store_user
-from app.services.sync import sync_all_authorized_users
 from app.storage.sqlite import SQLiteRepository
 from app.strava.client import StravaClientError
 from app.strava.oauth import StravaOAuthError
@@ -26,29 +36,7 @@ _SESSION_VIEWER_KEY = "dashboard_verified_user_id"
 _SESSION_PRIVACY_KEY = "privacy_verified_user_id"
 _SESSION_VERIFIED_AT_KEY = "dashboard_verified_at_utc"
 _SESSION_TIMEOUT = timedelta(minutes=15)
-
-
-def _year_bounds_utc(year: int) -> tuple[datetime, datetime]:
-    return (
-        datetime(year, 1, 1, 0, 0, 0, tzinfo=UTC),
-        datetime(year, 12, 31, 23, 59, 59, tzinfo=UTC),
-    )
-
-
-def _available_years(
-    repository: SQLiteRepository,
-    *,
-    verified_user_id: int | None = None,
-    club_id: int | None = None,
-) -> list[int]:
-    years = repository.list_activity_years(
-        verified_user_id=verified_user_id,
-        club_id=club_id,
-    )
-    current_year = date.today().year
-    if current_year not in years:
-        years.append(current_year)
-    return sorted(years, reverse=True)
+_SESSION_OAUTH_PENDING_URL_KEY = "oauth_pending_authorize_url"
 
 
 def _query_param_int(key: str) -> int | None:
@@ -64,6 +52,16 @@ def _query_param_int(key: str) -> int | None:
     return value if value > 0 else None
 
 
+def _query_param_text(key: str) -> str | None:
+    raw = st.query_params.get(key)
+    if isinstance(raw, list):
+        raw = raw[0] if raw else None
+    if raw is None:
+        return None
+    value = str(raw).strip()
+    return value if value else None
+
+
 def _short_athlete_name(full_name: str) -> str:
     parts = [part for part in full_name.strip().split() if part]
     if not parts:
@@ -71,6 +69,18 @@ def _short_athlete_name(full_name: str) -> str:
     if len(parts) == 1:
         return parts[0]
     return f"{parts[0]} {parts[-1][0]}."
+
+
+def _format_seconds(seconds: int) -> str:
+    """Format seconds into human-readable duration (e.g., '1h 30m')."""
+    minutes, remaining_seconds = divmod(max(0, seconds), 60)
+    hours, remaining_minutes = divmod(minutes, 60)
+
+    if hours > 0:
+        return f"{hours}h {remaining_minutes}m"
+    if remaining_minutes > 0:
+        return f"{remaining_minutes}m {remaining_seconds}s"
+    return f"{remaining_seconds}s"
 
 
 def _progress_display_table(progress: Any) -> Any:
@@ -106,70 +116,6 @@ def _progress_display_table(progress: Any) -> Any:
     )
 
 
-def _parse_last_sync_utc(value: Any) -> datetime | None:
-    if not isinstance(value, str) or not value:
-        return None
-    try:
-        parsed = datetime.fromisoformat(value)
-    except ValueError:
-        return None
-    if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=UTC)
-    return parsed.astimezone(UTC)
-
-
-def _latest_sync_utc(oauth_accounts: list[dict[str, Any]]) -> datetime | None:
-    latest: datetime | None = None
-    for account in oauth_accounts:
-        last_sync = _parse_last_sync_utc(account.get("last_sync_utc"))
-        if last_sync is None:
-            continue
-        if latest is None or last_sync > latest:
-            latest = last_sync
-    return latest
-
-
-def _any_account_stale(
-    oauth_accounts: list[dict[str, Any]],
-    *,
-    now_utc: datetime,
-    staleness_hours: int,
-) -> bool:
-    if not oauth_accounts:
-        return False
-
-    stale_before = now_utc - timedelta(hours=staleness_hours)
-    for account in oauth_accounts:
-        last_sync = _parse_last_sync_utc(account.get("last_sync_utc"))
-        if last_sync is None or last_sync <= stale_before:
-            return True
-    return False
-
-
-def _manual_sync_cooldown_remaining_seconds(
-    latest_sync_utc: datetime | None,
-    *,
-    now_utc: datetime,
-    cooldown_seconds: int,
-) -> int:
-    if latest_sync_utc is None:
-        return 0
-
-    elapsed_seconds = int((now_utc - latest_sync_utc).total_seconds())
-    return max(0, cooldown_seconds - elapsed_seconds)
-
-
-def _format_seconds(seconds: int) -> str:
-    minutes, remaining_seconds = divmod(max(0, seconds), 60)
-    hours, remaining_minutes = divmod(minutes, 60)
-
-    if hours > 0:
-        return f"{hours}h {remaining_minutes}m"
-    if remaining_minutes > 0:
-        return f"{remaining_minutes}m {remaining_seconds}s"
-    return f"{remaining_seconds}s"
-
-
 def _mark_viewer_verified(verified_user_id: int) -> None:
     st.session_state[_SESSION_VIEWER_KEY] = verified_user_id
     st.session_state[_SESSION_PRIVACY_KEY] = verified_user_id
@@ -197,26 +143,6 @@ def _viewer_session_is_fresh(*, now_utc: datetime) -> bool:
     return (now_utc - verified_at) <= _SESSION_TIMEOUT
 
 
-def _run_sync(settings: Any, *, reason: str) -> bool:
-    try:
-        with st.spinner(reason):
-            result = sync_all_authorized_users(settings)
-    except (StravaClientError, ValueError) as exc:
-        st.sidebar.warning(f"Sync failed, showing cached data: {exc}")
-        return False
-
-    if result.accounts_seen == 0:
-        st.sidebar.info("No authorized accounts to sync yet.")
-        return True
-
-    st.sidebar.success(
-        "Sync complete "
-        f"({result.accounts_synced}/{result.accounts_seen} accounts, "
-        f"stored {result.total_stored_activities} activities)."
-    )
-    return True
-
-
 def _render_dashboard_main(
     settings: Any,
     repository: SQLiteRepository,
@@ -232,7 +158,7 @@ def _render_dashboard_main(
         st.error("You are not authorized to view this club leaderboard.")
         return
 
-    years = _available_years(
+    years = available_years(
         repository,
         verified_user_id=None if active_club_id is not None else viewer_user_id,
         club_id=active_club_id,
@@ -241,11 +167,9 @@ def _render_dashboard_main(
     default_year_index = years.index(current_year) if current_year in years else 0
     selected_year = st.selectbox("Year", options=years, index=default_year_index)
 
-    year_start_utc, year_end_utc = _year_bounds_utc(selected_year)
-
-    activities = repository.fetch_activities_df(
-        start_date_utc=year_start_utc,
-        end_date_utc=year_end_utc,
+    activities = fetch_view_activities(
+        repository,
+        year=selected_year,
         verified_user_id=None if active_club_id is not None else viewer_user_id,
         club_id=active_club_id,
     )
@@ -259,20 +183,24 @@ def _render_dashboard_main(
             )
         return
 
+    goal_map = fetch_view_goal_map(
+        repository,
+        activities=activities,
+        verified_user_id=None if active_club_id is not None else viewer_user_id,
+        club_id=active_club_id,
+        default_goal_km=settings.annual_goal_km,
+    )
+
     if active_club_id is None:
-        viewer_goal_km = repository.get_user_annual_goal(
-            viewer_user_id,
-            default_goal_km=settings.annual_goal_km,
-        )
-        guide_goal_km = viewer_goal_km
-        progress = athlete_progress_table(activities, viewer_goal_km)
+        # Personal view: goal_map is a single float
+        guide_goal_km = goal_map if isinstance(goal_map, float) else settings.annual_goal_km
+        progress = athlete_progress_table(activities, guide_goal_km)
     else:
-        club_athlete_ids = [int(value) for value in activities["athlete_id"].unique().tolist()]
-        goal_map = repository.get_user_annual_goals(
-            club_athlete_ids,
-            default_goal_km=settings.annual_goal_km,
+        # Club view: goal_map is a dict
+        progress = athlete_progress_table(
+            activities,
+            goal_map if isinstance(goal_map, dict) else settings.annual_goal_km,
         )
-        progress = athlete_progress_table(activities, goal_map)
 
     summary = club_summary(progress)
     metric_col_1, metric_col_2, metric_col_3 = st.columns(3)
@@ -282,9 +210,13 @@ def _render_dashboard_main(
         metric_col_3.metric("Your completion", f"{summary.completion_pct:.1f}%")
         st.caption("Default view is private to your account.")
     else:
-        metric_col_1.metric("Club total distance", f"{summary.total_distance_km:.1f} km")
-        metric_col_2.metric("Club goal distance", f"{summary.total_goal_km:.1f} km")
-        metric_col_3.metric("Club completion", f"{summary.completion_pct:.1f}%")
+        club_progress = club_completion_summary(progress)
+        metric_col_1.metric("Athletes tracked", f"{club_progress.athlete_count}")
+        metric_col_2.metric("Avg completion", f"{club_progress.average_completion_pct:.1f}%")
+        metric_col_3.metric(
+            "At or above goal",
+            f"{club_progress.athletes_at_goal}/{club_progress.athlete_count}",
+        )
         st.caption(f"Viewing authorized members in club {active_club_id}.")
 
     st.subheader("Athlete progress")
@@ -363,7 +295,38 @@ def run_dashboard() -> None:
     if handle_maintenance_request(settings, repository):
         return
 
-    st.title("Strava 365 km Goal Tracker")
+    # Detect Strava OAuth callback error from query params.
+    oauth_error = _query_param_text("error")
+    if oauth_error:
+        st.query_params.clear()
+        st.error(f"Strava authorization was not completed: {oauth_error}")
+        return
+
+    # Detect Strava OAuth web callback (code + state in URL after redirect).
+    oauth_code = _query_param_text("code")
+    oauth_state = _query_param_text("state")
+    if oauth_code and oauth_state:
+        complete_oauth_flow = getattr(oauth_auth, "complete_oauth_flow", None)
+        if not callable(complete_oauth_flow):
+            st.query_params.clear()
+            st.error(
+                "OAuth callback handler is unavailable in this build. "
+                "Please redeploy or restart the app."
+            )
+            return
+        try:
+            user = complete_oauth_flow(settings, repository, oauth_code, oauth_state)
+            _mark_viewer_verified(user.verified_user_id)
+            st.session_state.pop(_SESSION_OAUTH_PENDING_URL_KEY, None)
+            st.query_params.clear()
+            st.rerun()
+        except (StravaOAuthError, StravaClientError, ValueError) as exc:
+            st.session_state.pop(_SESSION_OAUTH_PENDING_URL_KEY, None)
+            st.query_params.clear()
+            st.error(f"Strava authorization failed: {exc}")
+        return
+
+    st.title("Strava Goal Tracker")
     auto_sync_key = "dashboard_auto_sync_checked"
     viewer_key = _SESSION_VIEWER_KEY
 
@@ -378,19 +341,42 @@ def run_dashboard() -> None:
         st.sidebar.info("Viewer session expired. Verify again to continue.")
 
     oauth_accounts = repository.get_oauth_accounts()
-    latest_sync_utc = _latest_sync_utc(oauth_accounts)
+    latest_sync_utc_val = latest_sync_utc(oauth_accounts)
+    viewer_from_session = st.session_state.get(viewer_key)
+    viewer_user_id = viewer_from_session if isinstance(viewer_from_session, int) else None
+    valid_viewer_ids = {
+        int(account["verified_user_id"])
+        for account in oauth_accounts
+        if isinstance(account.get("verified_user_id"), int)
+    }
+    if viewer_user_id not in valid_viewer_ids:
+        viewer_user_id = None
+    viewer_last_sync_utc = (
+        account_last_sync_utc(oauth_accounts, viewer_user_id)
+        if viewer_user_id is not None
+        else None
+    )
 
     should_check_auto_sync = not st.session_state.get(auto_sync_key, False)
     if oauth_accounts and settings.auto_sync_enabled and should_check_auto_sync:
-        if _any_account_stale(
-            oauth_accounts,
-            now_utc=datetime.now(UTC),
-            staleness_hours=settings.auto_sync_staleness_hours,
-        ):
-            _run_sync(settings, reason="Auto-syncing stale account data...")
-            oauth_accounts = repository.get_oauth_accounts()
-            latest_sync_utc = _latest_sync_utc(oauth_accounts)
-        st.session_state[auto_sync_key] = True
+        auto_sync_completed = False
+        if viewer_user_id is not None:
+            stale_before = datetime.now(UTC) - timedelta(hours=settings.auto_sync_staleness_hours)
+            if viewer_last_sync_utc is None or viewer_last_sync_utc <= stale_before:
+                auto_sync_completed = run_sync_for_viewer(
+                    settings,
+                    verified_user_id=viewer_user_id,
+                    reason="Auto-syncing your stale account data...",
+                )
+                if auto_sync_completed:
+                    oauth_accounts = repository.get_oauth_accounts()
+                    latest_sync_utc_val = latest_sync_utc(oauth_accounts)
+                    viewer_last_sync_utc = account_last_sync_utc(oauth_accounts, viewer_user_id)
+            else:
+                auto_sync_completed = True
+
+        if auto_sync_completed:
+            st.session_state[auto_sync_key] = True
 
     st.sidebar.header("Verified Accounts")
     screen = st.sidebar.radio(
@@ -398,54 +384,159 @@ def run_dashboard() -> None:
         ["Dashboard", "Goal Preferences", "Privacy Settings"],
         index=0,
     )
+    active_club_id = _query_param_int("club_id")
 
-    if st.sidebar.button("Connect Strava Account"):
-        try:
-            with st.spinner("Waiting for Strava OAuth callback..."):
-                user = authorize_and_store_user(
-                    settings,
-                    repository,
-                    open_browser_window=True,
+    if settings.app_base_url:
+        # Web redirect flow (deployed)
+        if st.sidebar.button("Connect Strava Account"):
+            begin_oauth_flow = getattr(oauth_auth, "begin_oauth_flow", None)
+            if not callable(begin_oauth_flow):
+                st.sidebar.error(
+                    "OAuth setup is unavailable in this build. "
+                    "Please redeploy or restart the app."
                 )
-            st.sidebar.success(
-                f"Connected {user.firstname} {user.lastname} (id={user.verified_user_id})"
-            )
-            _mark_viewer_verified(user.verified_user_id)
-            _run_sync(settings, reason="Syncing connected accounts...")
-            oauth_accounts = repository.get_oauth_accounts()
-            latest_sync_utc = _latest_sync_utc(oauth_accounts)
-            st.session_state[auto_sync_key] = True
-        except (StravaOAuthError, StravaClientError, TimeoutError, ValueError) as exc:
-            st.sidebar.error(f"OAuth failed: {exc}")
+                return
+            try:
+                authorize_url = begin_oauth_flow(settings, repository)
+                st.session_state[_SESSION_OAUTH_PENDING_URL_KEY] = authorize_url
+                st.rerun()
+            except (ValueError, StravaOAuthError) as exc:
+                st.sidebar.error(f"OAuth setup failed: {exc}")
 
-    cooldown_remaining_seconds = _manual_sync_cooldown_remaining_seconds(
-        latest_sync_utc,
+        pending_authorize_url = st.session_state.get(_SESSION_OAUTH_PENDING_URL_KEY)
+        if isinstance(pending_authorize_url, str) and pending_authorize_url:
+            st.sidebar.info("Redirecting to Strava authorization...")
+            st.sidebar.link_button(
+                "Open Strava Authorization",
+                pending_authorize_url,
+                type="primary",
+            )
+            # Auto-redirect first, with a visible link fallback if browser blocks scripts.
+            components.html(
+                f"""
+                <script>
+                window.top.location.replace({pending_authorize_url!r});
+                </script>
+                """,
+                height=0,
+            )
+    else:
+        # Local server flow (local dev / CLI)
+        if st.sidebar.button("Connect Strava Account"):
+            authorize_and_store_user = getattr(oauth_auth, "authorize_and_store_user", None)
+            if not callable(authorize_and_store_user):
+                st.sidebar.error(
+                    "Local OAuth flow is unavailable in this build. "
+                    "Please redeploy or restart the app."
+                )
+                return
+            try:
+                with st.spinner("Waiting for Strava OAuth callback..."):
+                    user = authorize_and_store_user(
+                        settings,
+                        repository,
+                        open_browser_window=True,
+                    )
+                st.sidebar.success(
+                    f"Connected {user.firstname} {user.lastname} (id={user.verified_user_id})"
+                )
+                _mark_viewer_verified(user.verified_user_id)
+                sync_completed = run_sync_for_viewer(
+                    settings,
+                    verified_user_id=user.verified_user_id,
+                    reason="Syncing your account...",
+                )
+                if sync_completed:
+                    oauth_accounts = repository.get_oauth_accounts()
+                    latest_sync_utc_val = latest_sync_utc(oauth_accounts)
+                    viewer_user_id = user.verified_user_id
+                    viewer_last_sync_utc = account_last_sync_utc(
+                        oauth_accounts,
+                        user.verified_user_id,
+                    )
+                    st.session_state[auto_sync_key] = True
+                    st.rerun()
+            except (StravaOAuthError, StravaClientError, TimeoutError, ValueError) as exc:
+                st.sidebar.error(f"OAuth failed: {exc}")
+
+    sync_reference_utc = viewer_last_sync_utc if viewer_user_id is not None else latest_sync_utc_val
+    cooldown_remaining_seconds = manual_sync_cooldown_remaining_seconds(
+        sync_reference_utc,
         now_utc=datetime.now(UTC),
         cooldown_seconds=settings.manual_sync_cooldown_seconds,
     )
 
-    if st.sidebar.button("Sync now", disabled=not oauth_accounts):
-        if cooldown_remaining_seconds > 0:
-            st.sidebar.info(
-                "Sync cooldown active. Try again in "
-                f"{_format_seconds(cooldown_remaining_seconds)}."
-            )
+    viewer_in_active_club = (
+        active_club_id is not None
+        and viewer_user_id is not None
+        and repository.is_verified_user_in_club(viewer_user_id, active_club_id)
+    )
+    sync_button_label = "Sync club" if active_club_id is not None else "Sync yourself"
+    sync_disabled = viewer_user_id is None or (
+        active_club_id is not None and not viewer_in_active_club
+    )
+
+    if st.sidebar.button(sync_button_label, disabled=sync_disabled):
+        if viewer_user_id is None:
+            st.sidebar.info("Verify your viewer identity before syncing.")
+            return
+        if active_club_id is not None:
+            if not viewer_in_active_club:
+                st.sidebar.warning("You are not authorized to sync this club.")
+                return
+            club_accounts = repository.list_oauth_accounts_in_club(active_club_id)
+            if not club_accounts:
+                st.sidebar.info(
+                    "No connected members found in this club. "
+                    "Ask members to connect their Strava account first."
+                )
+            else:
+                run_sync_for_club_members(
+                    settings,
+                    club_id=active_club_id,
+                    club_accounts=club_accounts,
+                )
+                oauth_accounts = repository.get_oauth_accounts()
+                latest_sync_utc_val = latest_sync_utc(oauth_accounts)
+                viewer_last_sync_utc = account_last_sync_utc(oauth_accounts, viewer_user_id)
         else:
-            _run_sync(settings, reason="Syncing authorized accounts...")
-            oauth_accounts = repository.get_oauth_accounts()
-            latest_sync_utc = _latest_sync_utc(oauth_accounts)
+            if cooldown_remaining_seconds > 0:
+                st.sidebar.info(
+                    "Sync cooldown active. Try again in "
+                    f"{_format_seconds(cooldown_remaining_seconds)}."
+                )
+            else:
+                run_sync_for_viewer(
+                    settings,
+                    verified_user_id=viewer_user_id,
+                    reason="Syncing your account...",
+                )
+                oauth_accounts = repository.get_oauth_accounts()
+                latest_sync_utc_val = latest_sync_utc(oauth_accounts)
+                viewer_last_sync_utc = account_last_sync_utc(oauth_accounts, viewer_user_id)
 
     if oauth_accounts:
-        if latest_sync_utc is None:
+        if viewer_user_id is not None and viewer_last_sync_utc is None:
+            st.sidebar.caption("Your last sync: never")
+        elif viewer_user_id is not None and viewer_last_sync_utc is not None:
+            st.sidebar.caption(
+                f"Your last sync: {viewer_last_sync_utc.strftime('%Y-%m-%d %H:%M UTC')}"
+            )
+        elif latest_sync_utc_val is None:
             st.sidebar.caption("Last sync: never")
         else:
-            st.sidebar.caption(f"Last sync: {latest_sync_utc.strftime('%Y-%m-%d %H:%M UTC')}")
-        if cooldown_remaining_seconds > 0:
+            st.sidebar.caption(f"Last sync: {latest_sync_utc_val.strftime('%Y-%m-%d %H:%M UTC')}")
+        if active_club_id is None and cooldown_remaining_seconds > 0:
             st.sidebar.caption(
                 "Manual sync cooldown: " f"{_format_seconds(cooldown_remaining_seconds)} remaining"
             )
+        if active_club_id is not None:
+            st.sidebar.caption(
+                "Club sync uses per-member cooldowns "
+                f"({settings.manual_sync_cooldown_seconds}s each)."
+            )
         for account in oauth_accounts:
-            account_last_sync = _parse_last_sync_utc(account.get("last_sync_utc"))
+            account_last_sync = parse_last_sync_utc(account.get("last_sync_utc"))
             account_last_sync_text = (
                 account_last_sync.strftime("%Y-%m-%d %H:%M UTC")
                 if account_last_sync is not None
@@ -470,16 +561,6 @@ def run_dashboard() -> None:
         )
         return
 
-    viewer_from_session = st.session_state.get(viewer_key)
-    viewer_user_id = viewer_from_session if isinstance(viewer_from_session, int) else None
-    valid_viewer_ids = {
-        int(account["verified_user_id"])
-        for account in oauth_accounts
-        if isinstance(account.get("verified_user_id"), int)
-    }
-    if viewer_user_id not in valid_viewer_ids:
-        viewer_user_id = None
-
     if viewer_user_id is None:
         st.info(
             "Verify your viewer identity by connecting your Strava account "
@@ -496,7 +577,6 @@ def run_dashboard() -> None:
         )
         return
 
-    active_club_id = _query_param_int("club_id")
     _render_dashboard_main(
         settings,
         repository,

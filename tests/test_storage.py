@@ -220,6 +220,38 @@ def test_dsar_audit_log_records_and_reads_events(tmp_path: Path) -> None:
     }
 
 
+def test_list_dsar_events_limit_returns_most_recent_subset_in_ascending_order(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "cache.db"
+    repo = SQLiteRepository(db_path)
+    repo.initialize()
+
+    repo.log_dsar_event(
+        verified_user_id=None,
+        event_type="export",
+        request_source="cli",
+        details={"id": 1},
+    )
+    repo.log_dsar_event(
+        verified_user_id=None,
+        event_type="erasure",
+        request_source="cli",
+        details={"id": 2},
+    )
+    repo.log_dsar_event(
+        verified_user_id=None,
+        event_type="export",
+        request_source="dashboard",
+        details={"id": 3},
+    )
+
+    events = repo.list_dsar_events(limit=2)
+
+    assert len(events) == 2
+    assert [int(item["event_id"]) for item in events] == [2, 3]
+
+
 def test_delete_verified_user_data_keeps_dsar_events_without_fk_failure(tmp_path: Path) -> None:
     db_path = tmp_path / "cache.db"
     repo = SQLiteRepository(db_path)
@@ -346,6 +378,54 @@ def test_verified_user_club_membership_roundtrip(tmp_path: Path) -> None:
     assert not repo.is_verified_user_in_club(404, 99)
 
 
+def test_list_oauth_accounts_in_club_returns_only_connected_members(tmp_path: Path) -> None:
+    db_path = tmp_path / "cache.db"
+    repo = SQLiteRepository(db_path)
+    repo.initialize()
+
+    repo.save_verified_user(1001, "Ava", "Runner")
+    repo.save_oauth_token("verified_1001", 1001, "token", "refresh", 1775300000)
+    repo.replace_verified_user_clubs(1001, [70])
+    sync_time = datetime(2026, 4, 1, tzinfo=UTC)
+    repo.set_oauth_last_sync_utc("verified_1001", sync_time)
+
+    repo.save_verified_user(1002, "Ben", "Runner")
+    repo.replace_verified_user_clubs(1002, [70])
+
+    repo.save_verified_user(1003, "Cam", "Runner")
+    repo.save_oauth_token("verified_1003", 1003, "token", "refresh", 1775300000)
+    repo.replace_verified_user_clubs(1003, [88])
+
+    rows = repo.list_oauth_accounts_in_club(70)
+
+    assert len(rows) == 1
+    assert int(rows[0]["verified_user_id"]) == 1001
+    assert rows[0]["firstname"] == "Ava"
+    assert rows[0]["lastname"] == "Runner"
+    assert rows[0]["last_sync_utc"] == sync_time.isoformat()
+
+
+def test_list_oauth_accounts_in_club_excludes_deleted_user_data(tmp_path: Path) -> None:
+    db_path = tmp_path / "cache.db"
+    repo = SQLiteRepository(db_path)
+    repo.initialize()
+
+    repo.save_verified_user(2001, "Live", "Runner")
+    repo.save_oauth_token("verified_2001", 2001, "token", "refresh", 1775300000)
+    repo.replace_verified_user_clubs(2001, [99])
+
+    repo.save_verified_user(2002, "Gone", "Runner")
+    repo.save_oauth_token("verified_2002", 2002, "token", "refresh", 1775300000)
+    repo.replace_verified_user_clubs(2002, [99])
+
+    repo.delete_verified_user_data(2002, delete_activities=True)
+
+    rows = repo.list_oauth_accounts_in_club(99)
+    ids = {int(row["verified_user_id"]) for row in rows}
+
+    assert ids == {2001}
+
+
 def test_fetch_activities_df_can_scope_to_verified_user(tmp_path: Path) -> None:
     db_path = tmp_path / "cache.db"
     repo = SQLiteRepository(db_path)
@@ -390,6 +470,62 @@ def test_fetch_activities_df_can_scope_to_verified_user(tmp_path: Path) -> None:
 
     assert len(scoped) == 1
     assert int(scoped.iloc[0]["athlete_id"]) == 1
+
+
+def test_fetch_activities_df_verified_user_scope_excludes_identity_linked_athletes(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "cache.db"
+    repo = SQLiteRepository(db_path)
+    repo.initialize()
+    repo.save_verified_user(1, "Primary", "Runner")
+
+    repo.upsert_activities(
+        [
+            ClubActivity(
+                activity_id=701,
+                athlete_id=1,
+                athlete_name="Primary Runner",
+                name="Primary Run",
+                distance_m=5000.0,
+                moving_time_s=1400,
+                elapsed_time_s=1500,
+                elevation_gain_m=25.0,
+                sport_type="Run",
+                start_date_utc=datetime(2026, 4, 1, tzinfo=UTC),
+                raw_payload={"id": 701},
+            ),
+            ClubActivity(
+                activity_id=702,
+                athlete_id=9001,
+                athlete_name="Linked Club Profile",
+                name="Linked Run",
+                distance_m=6000.0,
+                moving_time_s=1500,
+                elapsed_time_s=1600,
+                elevation_gain_m=30.0,
+                sport_type="Run",
+                start_date_utc=datetime(2026, 4, 2, tzinfo=UTC),
+                raw_payload={"id": 702},
+            ),
+        ]
+    )
+
+    repo.save_identity_link(
+        club_athlete_id=9001,
+        verified_user_id=1,
+        confidence=0.99,
+        match_type="manual",
+    )
+
+    scoped = repo.fetch_activities_df(
+        start_date_utc=datetime(2026, 1, 1, tzinfo=UTC),
+        end_date_utc=datetime(2026, 12, 31, tzinfo=UTC),
+        verified_user_id=1,
+    )
+
+    athlete_ids = {int(value) for value in scoped["athlete_id"].tolist()}
+    assert athlete_ids == {1}
 
 
 def test_fetch_activities_df_can_scope_to_authorized_club_members(tmp_path: Path) -> None:
@@ -463,6 +599,55 @@ def test_fetch_activities_df_can_scope_to_authorized_club_members(tmp_path: Path
 
     athlete_ids = {int(value) for value in club_scoped["athlete_id"].tolist()}
     assert athlete_ids == {11, 22}
+
+
+def test_fetch_activities_df_club_scope_includes_identity_linked_athletes(tmp_path: Path) -> None:
+    db_path = tmp_path / "cache.db"
+    repo = SQLiteRepository(db_path)
+    repo.initialize()
+
+    repo.save_verified_user(501, "Ava", "Runner")
+    repo.save_oauth_token(
+        token_id="verified_501",
+        verified_user_id=501,
+        access_token="token",
+        refresh_token="refresh",
+        access_token_expires_at=1775300000,
+    )
+    repo.replace_verified_user_clubs(501, [77])
+
+    repo.upsert_activities(
+        [
+            ClubActivity(
+                activity_id=9001,
+                athlete_id=9001,
+                athlete_name="Ava Club Profile",
+                name="Linked Club Run",
+                distance_m=8000.0,
+                moving_time_s=1800,
+                elapsed_time_s=1900,
+                elevation_gain_m=55.0,
+                sport_type="Run",
+                start_date_utc=datetime(2026, 3, 10, tzinfo=UTC),
+                raw_payload={"id": 9001},
+            )
+        ]
+    )
+    repo.save_identity_link(
+        club_athlete_id=9001,
+        verified_user_id=501,
+        confidence=1.0,
+        match_type="manual",
+    )
+
+    club_scoped = repo.fetch_activities_df(
+        start_date_utc=datetime(2026, 1, 1, tzinfo=UTC),
+        end_date_utc=datetime(2026, 12, 31, tzinfo=UTC),
+        club_id=77,
+    )
+
+    athlete_ids = {int(value) for value in club_scoped["athlete_id"].tolist()}
+    assert athlete_ids == {9001}
 
 
 def test_user_annual_goal_defaults_and_persists_update(tmp_path: Path) -> None:

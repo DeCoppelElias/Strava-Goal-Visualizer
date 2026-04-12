@@ -13,6 +13,13 @@ class ClubSummary:
     completion_pct: float
 
 
+@dataclass(frozen=True)
+class ClubCompletionSummary:
+    athlete_count: int
+    average_completion_pct: float
+    athletes_at_goal: int
+
+
 def athlete_progress_table(
     activities: pd.DataFrame,
     annual_goal_km: float | Mapping[int, float],
@@ -74,6 +81,25 @@ def club_summary(progress_table: pd.DataFrame) -> ClubSummary:
         total_distance_km=total_distance,
         total_goal_km=total_goal,
         completion_pct=completion,
+    )
+
+
+def club_completion_summary(progress_table: pd.DataFrame) -> ClubCompletionSummary:
+    if progress_table.empty:
+        return ClubCompletionSummary(
+            athlete_count=0,
+            average_completion_pct=0.0,
+            athletes_at_goal=0,
+        )
+
+    athlete_count = int(len(progress_table))
+    average_completion_pct = float(progress_table["completion_pct"].mean())
+    athletes_at_goal = int((progress_table["completion_pct"] >= 100.0).sum())
+
+    return ClubCompletionSummary(
+        athlete_count=athlete_count,
+        average_completion_pct=average_completion_pct,
+        athletes_at_goal=athletes_at_goal,
     )
 
 

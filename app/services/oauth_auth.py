@@ -39,35 +39,11 @@ def _extract_club_ids(athlete_payload: dict[str, object]) -> list[int]:
     return club_ids
 
 
-def authorize_and_store_user(
+def _save_user_from_athlete(
     settings: Settings,
     repository: SQLiteRepository,
-    *,
-    open_browser_window: bool = True,
+    token_data: dict[str, str | int],
 ) -> AuthorizedUser:
-    redirect_uri = "http://localhost:8765/callback"
-    oauth_state = secrets.token_urlsafe(32)
-    authorize_url = build_authorize_url(
-        client_id=settings.strava_client_id,
-        redirect_uri=redirect_uri,
-        state=oauth_state,
-    )
-
-    if open_browser_window:
-        webbrowser.open(authorize_url)
-
-    code = start_callback_listener(
-        port=8765,
-        timeout_seconds=300,
-        expected_state=oauth_state,
-    )
-    token_data = exchange_code_for_tokens(
-        code=code,
-        client_id=settings.strava_client_id,
-        client_secret=settings.strava_client_secret,
-        redirect_uri=redirect_uri,
-    )
-
     access_token = token_data.get("access_token")
     refresh_token = token_data.get("refresh_token")
     expires_at = token_data.get("expires_at")
@@ -126,3 +102,74 @@ def authorize_and_store_user(
         email=email if isinstance(email, str) else None,
         token_id=token_id,
     )
+
+
+def begin_oauth_flow(settings: Settings, repository: SQLiteRepository) -> str:
+    """Save a short-lived OAuth state and return the Strava authorize URL.
+
+    Used by the web dashboard redirect flow. The returned URL should be
+    presented to the user as a link. After approval, Strava redirects to
+    APP_BASE_URL with ?code=...&state=... query parameters.
+    """
+    if not settings.app_base_url:
+        raise ValueError(
+            "APP_BASE_URL is not configured. "
+            "Set it to your deployed app URL (e.g. https://your-app.onrender.com)."
+        )
+    state = secrets.token_urlsafe(32)
+    repository.save_pending_oauth_state(state, ttl_seconds=600)
+    repository.purge_expired_oauth_states()
+    return build_authorize_url(
+        client_id=settings.strava_client_id,
+        redirect_uri=settings.app_base_url,
+        state=state,
+    )
+
+
+def complete_oauth_flow(
+    settings: Settings,
+    repository: SQLiteRepository,
+    code: str,
+    state: str,
+) -> AuthorizedUser:
+    """Complete the web OAuth callback: validate state, exchange code, save user."""
+    if not repository.consume_pending_oauth_state(state):
+        raise StravaOAuthError("Invalid or expired OAuth state. Please try connecting again.")
+    token_data = exchange_code_for_tokens(
+        code=code,
+        client_id=settings.strava_client_id,
+        client_secret=settings.strava_client_secret,
+        redirect_uri=settings.app_base_url,
+    )
+    return _save_user_from_athlete(settings, repository, token_data)
+
+
+def authorize_and_store_user(
+    settings: Settings,
+    repository: SQLiteRepository,
+    *,
+    open_browser_window: bool = True,
+) -> AuthorizedUser:
+    redirect_uri = "http://localhost:8765/callback"
+    oauth_state = secrets.token_urlsafe(32)
+    authorize_url = build_authorize_url(
+        client_id=settings.strava_client_id,
+        redirect_uri=redirect_uri,
+        state=oauth_state,
+    )
+
+    if open_browser_window:
+        webbrowser.open(authorize_url)
+
+    code = start_callback_listener(
+        port=8765,
+        timeout_seconds=300,
+        expected_state=oauth_state,
+    )
+    token_data = exchange_code_for_tokens(
+        code=code,
+        client_id=settings.strava_client_id,
+        client_secret=settings.strava_client_secret,
+        redirect_uri=redirect_uri,
+    )
+    return _save_user_from_athlete(settings, repository, token_data)
