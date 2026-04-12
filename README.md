@@ -7,8 +7,8 @@ A privacy-first analytics dashboard that syncs OAuth-authorized Strava run activ
 - **OAuth Integration** — Secure Strava account authorization with pagination and automatic retry handling.
 - **SQLite Analytics** — Local-first data storage with intelligent caching and deduplication.
 - **Smart Sync** — Auto-sync when stale (24h default) plus on-demand sync with per-user cooldown.
-- **Club Leaderboards** — View multiple athletes' yearly progress toward 365 km in one dashboard.
-- **Customizable Goals** — Per-athlete annual goal with visual progress tracking (1 km/day guide line).
+- **Club Leaderboards** — View multiple athletes' yearly progress toward goal in one dashboard.
+- **Customizable Goals** — Per-athlete annual goal with visual progress tracking (goal/365 km/day guide line).
 - **Privacy Controls** — Identity-verified data export and deletion, account disconnection, audit logging.
 - **Interactive Charts** — Jan-Dec cumulative progress, year selector, multi-athlete comparison.
 - **Quality & Testing** — Full type hints (mypy), code style (ruff), and pytest test suite.
