@@ -137,6 +137,9 @@ Cleanup operations must be scheduled to run regularly. Choose one:
 
 ### Option 1: GitHub Actions (Recommended for Render)
 The included `.github/workflows/maintenance.yml` automatically runs daily and can also be triggered manually.
+It triggers both cleanup jobs:
+- `cleanup-inactive` with a 90-day inactivity window
+- `cleanup-activities` with a 3-year retention window
 
 **Setup:**
 1. Set `MAINTENANCE_CRON_TOKEN` in your deployed environment to a random string.
