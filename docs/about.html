@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Goal Visualizer | Running Analytics Dashboard</title>
+    <meta
+      name="description"
+      content="Goal Visualizer: A free, privacy-first analytics dashboard for tracking personal and club running goals using Strava data."
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main>
+      <section class="card">
+        <h1>Goal Visualizer</h1>
+        <p class="subtle">Free, privacy-first running analytics for Strava</p>
+
+        <h2>What is Goal Visualizer?</h2>
+        <p>
+          Goal Visualizer is a lightweight, privacy-focused analytics dashboard that helps runners
+          track progress toward annual running goals. Connect your Strava account to see:
+        </p>
+        <ul>
+          <li><strong>Personal progress:</strong> Distance and pace tracking toward your 365km goal</li>
+          <li><strong>Club leaderboards:</strong> See how your running club is tracking together</li>
+          <li><strong>Interactive charts:</strong> Monthly and yearly progress visualizations</li>
+          <li><strong>Custom goals:</strong> Set your own annual mileage target</li>
+          <li><strong>Real-time syncing:</strong> View your latest Strava activities automatically</li>
+        </ul>
+
+        <h2>Why Goal Visualizer?</h2>
+        <p>
+          Built by runners, for runners. We believe analytics tools should be:
+        </p>
+        <ul>
+          <li><strong>Simple:</strong> No complicated setup or configuration</li>
+          <li><strong>Private:</strong> Your data stays local; we can't see your activities</li>
+          <li><strong>Honest:</strong> We tell you exactly what we store and why</li>
+          <li><strong>Deletable:</strong> Export or delete your data anytime with one click</li>
+          <li><strong>Open:</strong> Source code available on GitHub for transparency</li>
+        </ul>
+
+        <h2>How It Works</h2>
+        <ol>
+          <li>You authorize your Strava account via secure OAuth</li>
+          <li>Goal Visualizer fetches your Run activities</li>
+          <li>Data is stored in a local SQLite database (encrypted)</li>
+          <li>Dashboard generates your personalized analytics</li>
+          <li>You can disconnect and delete anytime</li>
+        </ol>
+
+        <p style="color: #666; font-size: 14px; margin-top: 20px;">
+          ℹ️ <strong>No data is sold, shared with ads, or used for profit.</strong> Goal Visualizer
+          is a hobby project maintained by an individual runner.
+        </p>
+
+        <h2>Technical Details</h2>
+        <p>
+          Built with:
+        </p>
+        <ul>
+          <li>Python 3.12 with Streamlit for the dashboard</li>
+          <li>SQLite for local data storage</li>
+          <li>Fernet encryption for OAuth token security</li>
+          <li>Strava v3 API (activity:read_all, profile:read_all scopes)</li>
+          <li>Deployed on Render (HTTPS enforced)</li>
+        </ul>
+
+        <h2>Get Started</h2>
+        <p>
+          <a href="https://strava-goal-visualizer.onrender.com">Launch Goal Visualizer →</a>
+        </p>
+
+        <nav aria-label="Legal pages">
+          <a href="index.html">Home</a>
+          <a href="privacy.html">Privacy Policy</a>
+          <a href="terms.html">Terms of Service</a>
+          <a href="data-deletion.html">Data Deletion</a>
+        </nav>
+
+        <h2>Questions or Feedback?</h2>
+        <p>
+          Email: <a href="mailto:goalvisualizer.support@gmail.com">goalvisualizer.support@gmail.com</a>
+        </p>
+
+        <p class="footer" style="margin-top: 40px; border-top: 1px solid #ddd; padding-top: 20px;">
+          <strong>Goal Visualizer</strong> is open source under the MIT License.<br />
+          Built with ❤️ for runners, by runners.
+        </p>
+      </section>
+    </main>
+  </body>
+</html>
