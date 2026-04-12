@@ -17,14 +17,10 @@ from app.strava.oauth import StravaOAuthError
 def _legal_links(settings: Any) -> None:
     st.markdown("### Public legal pages")
 
+    about_url = str(getattr(settings, "about_url", "") or "").strip()
     policy_url = str(getattr(settings, "privacy_policy_url", "") or "").strip()
     terms_url = str(getattr(settings, "terms_url", "") or "").strip()
     deletion_url = str(getattr(settings, "data_deletion_url", "") or "").strip()
-
-    # Derive about page URL from the same GitHub Pages base as privacy policy
-    about_url = ""
-    if policy_url:
-        about_url = policy_url.rsplit("/", 1)[0] + "/about.html"
 
     has_all_links = bool(policy_url and terms_url and deletion_url)
     if not has_all_links:
