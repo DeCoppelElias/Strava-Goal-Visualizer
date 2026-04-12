@@ -50,18 +50,10 @@ def _privacy_policy_notice(settings: Any) -> None:
         "Control your data lifecycle here: verify identity, export your data, and permanently "
         "disconnect your account with full local data removal."
     )
-    st.markdown(
-        """
-### Privacy Notice
-
-- We store Strava profile identifiers, OAuth token metadata, and synced activity data in local
-    SQLite storage for dashboard analytics.
-- We process this data only for synchronization, display, and account lifecycle operations.
-- You can export your local data from this screen at any time.
-- You can disconnect and permanently remove your local data from this screen at any time.
-- Inactive accounts may be cleaned up by the app operator based on retention policy.
-- Public Privacy Policy, Terms, and Data Deletion pages are linked below when configured.
-        """
+    st.caption(
+        "We store your Strava profile, OAuth tokens, and synced activity data solely for "
+        "dashboard analytics. You can export or delete your data below at any time. "
+        "See the linked pages for the full privacy policy and terms."
     )
     _legal_links(settings)
 
