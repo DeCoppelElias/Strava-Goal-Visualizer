@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import streamlit as st
+import streamlit.components.v1 as components
 
 from app.services.account_lifecycle import revoke_account_if_requested
 from app.services.oauth_auth import authorize_and_store_user
@@ -123,21 +124,63 @@ def render_privacy_settings(
     can_download = False
     verified_user_id_for_log: int | None = None
 
-    if st.button("Verify My Identity With Strava"):
-        try:
-            with st.spinner("Waiting for Strava OAuth callback..."):
-                user = authorize_and_store_user(
-                    settings,
-                    repository,
-                    open_browser_window=True,
+    # Check if in deployed web mode with OAuth state persistence
+    _oauth_pending_url_key = "privacy_oauth_pending_authorize_url"
+    pending_authorize_url = st.session_state.get(_oauth_pending_url_key)
+
+    if settings.app_base_url and not pending_authorize_url:
+        # Web redirect flow (deployed)
+        if st.button("Verify My Identity With Strava", use_container_width=True):
+            try:
+                from app.services.oauth_auth import begin_oauth_flow
+
+                authorize_url = begin_oauth_flow(settings, repository)
+                st.session_state[_oauth_pending_url_key] = authorize_url
+                st.rerun()
+            except (ValueError, StravaOAuthError) as exc:
+                st.error(f"OAuth setup failed: {exc}")
+    elif pending_authorize_url:
+        # Web redirect pending
+        st.info(
+            "Opening Strava authorization in a new tab. "
+            "If nothing opens, click the button below."
+        )
+        st.link_button(
+            "✓ Open Strava Authorization",
+            pending_authorize_url,
+            type="primary",
+            use_container_width=True,
+        )
+        # Try desktop auto-redirect (works on desktop, harmless on mobile).
+        components.html(
+            f"""
+            <script>
+            try {{
+              window.location.href = {pending_authorize_url!r};
+            }} catch(e) {{
+              console.log('Auto-redirect unavailable, use button above.');
+            }}
+            </script>
+            """,
+            height=0,
+        )
+    else:
+        # Local server flow (local dev / CLI)
+        if st.button("Verify My Identity With Strava", use_container_width=True):
+            try:
+                with st.spinner("Waiting for Strava OAuth callback..."):
+                    user = authorize_and_store_user(
+                        settings,
+                        repository,
+                        open_browser_window=True,
+                    )
+                mark_viewer_verified(user.verified_user_id)
+                st.success(
+                    "Identity verified as "
+                    f"{user.firstname} {user.lastname} (id={user.verified_user_id})."
                 )
-            mark_viewer_verified(user.verified_user_id)
-            st.success(
-                "Identity verified as "
-                f"{user.firstname} {user.lastname} (id={user.verified_user_id})."
-            )
-        except (StravaOAuthError, StravaClientError, TimeoutError, ValueError) as exc:
-            st.error(f"Identity verification failed: {exc}")
+            except (StravaOAuthError, StravaClientError, TimeoutError, ValueError) as exc:
+                st.error(f"Identity verification failed: {exc}")
 
     verified_user_id = st.session_state.get(identity_key)
     account: dict[str, Any] | None = None

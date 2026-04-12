@@ -405,17 +405,26 @@ def run_dashboard() -> None:
 
         pending_authorize_url = st.session_state.get(_SESSION_OAUTH_PENDING_URL_KEY)
         if isinstance(pending_authorize_url, str) and pending_authorize_url:
-            st.sidebar.info("Redirecting to Strava authorization...")
+            st.sidebar.info(
+                "Opening Strava authorization in a new tab. "
+                "If nothing opens, click the button below."
+            )
             st.sidebar.link_button(
-                "Open Strava Authorization",
+                "✓ Open Strava Authorization",
                 pending_authorize_url,
                 type="primary",
+                use_container_width=True,
             )
-            # Auto-redirect first, with a visible link fallback if browser blocks scripts.
+            # Try desktop auto-redirect (works on desktop, harmless on mobile).
+            # Mobile will use the direct link button above.
             components.html(
                 f"""
                 <script>
-                window.top.location.replace({pending_authorize_url!r});
+                try {{
+                  window.location.href = {pending_authorize_url!r};
+                }} catch(e) {{
+                  console.log('Auto-redirect unavailable, use button above.');
+                }}
                 </script>
                 """,
                 height=0,
