@@ -17,7 +17,6 @@ from app.services.dashboard_sync import (
     account_last_sync_utc,
     latest_sync_utc,
     manual_sync_cooldown_remaining_seconds,
-    parse_last_sync_utc,
     run_sync_for_club_members,
     run_sync_for_viewer,
 )
@@ -525,6 +524,8 @@ def run_dashboard() -> None:
                 viewer_last_sync_utc = account_last_sync_utc(oauth_accounts, viewer_user_id)
 
     if oauth_accounts:
+        account_count = len(oauth_accounts)
+        st.sidebar.caption(f"{account_count} account{'s' if account_count != 1 else ''} connected")
         if viewer_user_id is not None and viewer_last_sync_utc is None:
             st.sidebar.caption("Your last sync: never")
         elif viewer_user_id is not None and viewer_last_sync_utc is not None:
@@ -543,17 +544,6 @@ def run_dashboard() -> None:
             st.sidebar.caption(
                 "Club sync uses per-member cooldowns "
                 f"({settings.manual_sync_cooldown_seconds}s each)."
-            )
-        for account in oauth_accounts:
-            account_last_sync = parse_last_sync_utc(account.get("last_sync_utc"))
-            account_last_sync_text = (
-                account_last_sync.strftime("%Y-%m-%d %H:%M UTC")
-                if account_last_sync is not None
-                else "never"
-            )
-            st.sidebar.caption(
-                f"{account['firstname']} {account['lastname']} "
-                f"(id={account['verified_user_id']}, last sync: {account_last_sync_text})"
             )
     else:
         st.sidebar.caption("No connected accounts yet")
