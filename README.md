@@ -194,11 +194,53 @@ python main.py forget-user --verified-user-id 123456 --revoke
 3. Logs confirmed after first automatic run.
 4. Privacy policy and support contact published for user data requests.
 
+## GitHub Pages Legal Site (Privacy/Terms/Deletion)
+
+This repository includes a static legal site under `docs/` for Strava review links.
+
+Included pages:
+
+- `docs/index.html`
+- `docs/privacy.html`
+- `docs/terms.html`
+- `docs/data-deletion.html`
+
+### Enable GitHub Pages
+
+1. Push your branch to GitHub.
+2. Open repository Settings -> Pages.
+3. Under Build and deployment:
+   - Source: Deploy from a branch
+   - Branch: `main` (or your default branch)
+   - Folder: `/docs`
+4. Save and wait for the Pages URL to be published.
+
+### Configure Strava settings with published URLs
+
+Use your published GitHub Pages URLs for:
+
+- Privacy Policy URL -> `privacy.html`
+- Terms URL -> `terms.html`
+- Data Deletion URL -> `data-deletion.html`
+
+Keep your OAuth callback URL pointed at your deployed dashboard app URL (not GitHub Pages).
+
+### Before publishing
+
+Replace placeholders in the legal pages:
+
+- `YOUR-SUPPORT-EMAIL`
+- `YOUR-APP-URL`
+
 ## Quality Checks
 
 ruff check .
 mypy app
 pytest
+
+## License
+
+This project is licensed under the MIT License. See `LICENSE`.
 
 ## Notes
 
@@ -208,6 +250,7 @@ pytest
 - Dashboard auto-sync policy can be tuned via AUTO_SYNC_ENABLED, AUTO_SYNC_STALENESS_HOURS, and MANUAL_SYNC_COOLDOWN_SECONDS.
 - Sync progress is logged (page fetches, totals, and token refresh events). Set LOG_LEVEL in .env (for example INFO or DEBUG).
 - Configure SUPPORT_CONTACT_EMAIL in .env so users can reach you for privacy/data requests.
+- Configure `PRIVACY_POLICY_URL`, `TERMS_URL`, and `DATA_DELETION_URL` in .env to show public legal links in `Privacy Settings`.
 - Data handling: the app stores OAuth account identity, token metadata, and synced activity records locally in SQLite for analytics.
 - Inactivity cleanup: use `cleanup-inactive` regularly to remove inactive users and reduce retained personal data.
 - Activity retention cleanup: use `cleanup-activities` to remove activity records older than your retention window.

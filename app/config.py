@@ -25,6 +25,9 @@ class Settings:
     token_encryption_key: str = ""
     maintenance_cron_token: str = ""
     app_base_url: str = ""
+    privacy_policy_url: str = ""
+    terms_url: str = ""
+    data_deletion_url: str = ""
 
 
 def load_settings() -> Settings:
@@ -102,4 +105,7 @@ def load_settings() -> Settings:
         )
         .strip()
         .rstrip("/"),
+        privacy_policy_url=os.getenv("PRIVACY_POLICY_URL", "").strip(),
+        terms_url=os.getenv("TERMS_URL", "").strip(),
+        data_deletion_url=os.getenv("DATA_DELETION_URL", "").strip(),
     )

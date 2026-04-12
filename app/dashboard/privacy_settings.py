@@ -13,6 +13,32 @@ from app.strava.client import StravaClientError
 from app.strava.oauth import StravaOAuthError
 
 
+def _legal_links(settings: Any) -> None:
+    st.markdown("### Public legal pages")
+
+    policy_url = str(getattr(settings, "privacy_policy_url", "") or "").strip()
+    terms_url = str(getattr(settings, "terms_url", "") or "").strip()
+    deletion_url = str(getattr(settings, "data_deletion_url", "") or "").strip()
+
+    has_all_links = bool(policy_url and terms_url and deletion_url)
+    if not has_all_links:
+        st.info(
+            "Set PRIVACY_POLICY_URL, TERMS_URL, and DATA_DELETION_URL in your environment "
+            "to publish external legal links here."
+        )
+
+    col_policy, col_terms, col_deletion = st.columns(3)
+    with col_policy:
+        if policy_url:
+            st.link_button("Privacy policy", policy_url, use_container_width=True)
+    with col_terms:
+        if terms_url:
+            st.link_button("Terms", terms_url, use_container_width=True)
+    with col_deletion:
+        if deletion_url:
+            st.link_button("Data deletion", deletion_url, use_container_width=True)
+
+
 def _privacy_policy_notice(settings: Any) -> None:
     st.markdown("## Privacy Settings")
     st.caption(
@@ -23,14 +49,17 @@ def _privacy_policy_notice(settings: Any) -> None:
         """
 ### Privacy Notice
 
-- We store your Strava profile identifiers, OAuth token metadata, and synced activity data in a
-  local SQLite database to provide dashboard analytics.
-- We use this data only to sync your runs and render your progress views.
-- You can export your stored data from this screen at any time.
-- You can permanently remove your account data from this app from this screen at any time.
-- Inactive accounts can be cleaned up automatically by the app operator based on retention policy.
+- We store Strava profile identifiers, OAuth token metadata, and synced activity data in local
+    SQLite storage for dashboard analytics.
+- We process this data only for synchronization, display, and account lifecycle operations.
+- You can export your local data from this screen at any time.
+- You can disconnect and permanently remove your local data from this screen at any time.
+- Inactive accounts may be cleaned up by the app operator based on retention policy.
+- Public Privacy Policy, Terms, and Data Deletion pages are linked below when configured.
         """
     )
+    _legal_links(settings)
+
     if settings.support_contact_email:
         st.markdown(f"Support contact: {settings.support_contact_email}")
     else:

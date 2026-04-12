@@ -1,0 +1,154 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Source+Serif+4:wght@400;600;700&display=swap');
+
+:root {
+  --bg: #f2efe6;
+  --paper: #fffdf7;
+  --ink: #1f1d18;
+  --muted: #5f5a4e;
+  --accent: #0a6a5b;
+  --accent-soft: #d3ece6;
+  --line: #dfd8ca;
+  --radius: 14px;
+  --shadow: 0 10px 30px rgba(31, 29, 24, 0.08);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: radial-gradient(circle at 15% 0%, #fff8de 0%, #f2efe6 40%),
+    linear-gradient(145deg, #f4f1e8 0%, #ebe5d7 100%);
+  color: var(--ink);
+  min-height: 100%;
+}
+
+body {
+  font-family: "DM Sans", "Segoe UI", sans-serif;
+  line-height: 1.65;
+}
+
+main {
+  max-width: 860px;
+  margin: 42px auto;
+  padding: 0 18px 36px;
+}
+
+.card {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 28px;
+  animation: enter 260ms ease-out;
+}
+
+h1,
+h2,
+h3 {
+  font-family: "Source Serif 4", Georgia, serif;
+  line-height: 1.2;
+  margin-top: 0;
+}
+
+h1 {
+  font-size: clamp(1.9rem, 2.6vw, 2.5rem);
+  margin-bottom: 8px;
+}
+
+h2 {
+  font-size: 1.3rem;
+  margin-top: 28px;
+  margin-bottom: 8px;
+}
+
+h3 {
+  font-size: 1.08rem;
+  margin-top: 18px;
+  margin-bottom: 8px;
+}
+
+p,
+li {
+  color: var(--ink);
+  margin-top: 0;
+}
+
+ul,
+ol {
+  padding-left: 22px;
+}
+
+.subtle {
+  color: var(--muted);
+  margin-bottom: 16px;
+}
+
+.note {
+  border-left: 4px solid var(--accent);
+  background: var(--accent-soft);
+  padding: 10px 12px;
+  border-radius: 8px;
+}
+
+a {
+  color: var(--accent);
+  text-underline-offset: 2px;
+}
+
+a:hover {
+  text-decoration-thickness: 2px;
+}
+
+nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 14px 0 4px;
+}
+
+nav a {
+  display: inline-block;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 6px 12px;
+  text-decoration: none;
+  background: #fff;
+  transition: transform 120ms ease, background-color 120ms ease;
+}
+
+nav a:hover {
+  transform: translateY(-1px);
+  background: #fcfaf2;
+}
+
+.footer {
+  margin-top: 22px;
+  color: var(--muted);
+  font-size: 0.94rem;
+}
+
+@keyframes enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 640px) {
+  main {
+    margin-top: 20px;
+    padding: 0 12px 24px;
+  }
+
+  .card {
+    padding: 18px;
+  }
+}
