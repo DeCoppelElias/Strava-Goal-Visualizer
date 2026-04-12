@@ -72,7 +72,7 @@ access token expires
 
 ### Pagination
 
-- Page size: 100 activities per request (Strava maximum is 200; we use 100)
+- Page size: 100 activities per request
 - Page delay: 1.1 seconds between pages (exceeds Strava's 1-second minimum)
 - Maximum pages per sync: 60 (hard cap to prevent runaway fetches)
 - Early exit: pagination stops as soon as an activity older than Jan 1 of the current year
