@@ -80,16 +80,22 @@ access token expires
 
 ### HTTP Rate Limit Handling
 
-The app reads and respects Strava's rate limit response headers on every request:
+On every 429 response, the app calculates the required wait time from response headers, then decides whether to auto-wait or raise an error immediately:
 
 | Condition | Behaviour |
 |---|---|
-| `X-RateLimit-Usage` short-term bucket exceeded | Wait until the next 15-minute window |
-| `X-RateLimit-Usage` daily bucket exceeded | Wait until UTC midnight |
-| `Retry-After` header present | Wait the specified number of seconds |
-| HTTP 429 with wait > 300 s | Raise error; do not retry automatically |
+| HTTP 429, calculated wait ≤ 5 s | Sleep for the indicated duration, then retry |
+| HTTP 429, calculated wait > 5 s | Raise error immediately — no long blocking waits |
+| HTTP 429, no wait duration in headers | Raise error immediately |
 | HTTP 5xx transient error | Exponential backoff (1 s → 2 s → 4 s), up to 3 retries |
 | HTTP 401 token expired | Auto-refresh access token, then retry once |
+
+**How wait duration is calculated (in priority order):**
+1. `Retry-After` header — used directly as seconds
+2. `X-ReadRateLimit-Reset` / `X-RateLimit-Reset` header — seconds until the reset timestamp
+3. `X-RateLimit-Usage` + `X-RateLimit-Limit` headers — short-term bucket exceeded → seconds to next quarter-hour boundary; daily bucket exceeded → seconds to next UTC midnight
+
+If the computed wait exceeds 5 seconds (e.g., a 15-minute or daily rate limit), the app raises a `StravaRateLimitError` immediately rather than blocking. This keeps the dashboard responsive for users.
 
 ### Summary
 
