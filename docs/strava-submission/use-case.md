@@ -32,8 +32,8 @@ displays:
 
 | Scope | Reason |
 |---|---|
-| `activity:read_all` | Fetch the authenticated user's Run activities to compute distance, pace, and progress metrics |
-| `profile:read_all` | Display the athlete's first/last name in the leaderboard and identify their account during OAuth verification |
+| `activity:read_all` | Fetch the authenticated user's Run activities to compute distance and progress metrics. `activity:read` would exclude activities set to "Only You" visibility, causing under-counting for private athletes. |
+| `profile:read_all` | The `GET /athlete` endpoint only returns the `clubs` field under `profile:read_all`. This field is read at OAuth time to store each user's club memberships, which powers the club leaderboard access check and club sync. Without it, the club leaderboard feature would not work. |
 
 No other scopes are requested or used.
 

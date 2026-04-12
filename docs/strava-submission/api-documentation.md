@@ -10,8 +10,8 @@ Strava v3 REST API — https://developers.strava.com/docs/reference/
 
 | Scope | Endpoints Used | Purpose |
 |---|---|---|
-| `activity:read_all` | `GET /athlete/activities` | Fetch authenticated user's Run activities |
-| `profile:read_all` | `GET /athlete` | Fetch athlete profile (id, firstname, lastname) |
+| `activity:read_all` | `GET /athlete/activities` | Fetch all Run activities including those set to "Only You" visibility. `activity:read` would exclude private activities, causing under-counted progress for athletes with private runs. |
+| `profile:read_all` | `GET /athlete` | Required for the `clubs` field in the athlete response. Club memberships are read at OAuth time and stored locally to power the club leaderboard access check and club-scoped sync. Under `read` scope, `clubs` is absent from the response and the club leaderboard feature does not work. |
 
 ---
 
