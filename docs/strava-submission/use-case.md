@@ -43,11 +43,12 @@ No other scopes are requested or used.
 
 | | Athletes |
 |---|---|
-| Current (sandbox/friends) | 5–10 |
+| Current (sandbox mode) | 1 |
 | Requesting approval for | 100 |
 
-The app is shared selectively with friends and small running clubs. It is not marketed
-for broad public use and has no advertising or monetization.
+The app is currently in Strava API sandbox mode with a single connected user. Once
+approval is granted, it will be shared with friends and small running clubs. It is not
+marketed for broad public use and has no advertising or monetization.
 
 ---
 
