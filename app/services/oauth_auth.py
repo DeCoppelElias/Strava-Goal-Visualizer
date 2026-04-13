@@ -3,16 +3,64 @@ from __future__ import annotations
 import secrets
 import webbrowser
 from dataclasses import dataclass
+from datetime import date
 
 from app.config import Settings
 from app.storage.sqlite import SQLiteRepository
-from app.strava.client import StravaClient
+from app.strava.client import StravaClient, StravaClientError
 from app.strava.oauth import (
     StravaOAuthError,
     build_authorize_url,
     exchange_code_for_tokens,
-    start_callback_listener,
+    start_callback_listener_with_metadata,
 )
+
+_REQUIRED_OAUTH_SCOPES = frozenset({"activity:read_all", "profile:read_all"})
+
+
+def _parse_scope_value(scope_value: object) -> set[str]:
+    if not isinstance(scope_value, str):
+        return set()
+    return {scope.strip() for scope in scope_value.split(",") if scope.strip()}
+
+
+def _validate_required_permissions(
+    granted_scope: str | None,
+    *,
+    athlete_payload: dict[str, object],
+    client: StravaClient,
+) -> None:
+    granted_scopes = _parse_scope_value(granted_scope)
+    if granted_scopes:
+        missing_scopes = sorted(_REQUIRED_OAUTH_SCOPES - granted_scopes)
+        if missing_scopes:
+            missing = ", ".join(missing_scopes)
+            raise StravaOAuthError(
+                "Missing required Strava permissions: "
+                f"{missing}. Please reconnect and allow all requested permissions."
+            )
+        return
+
+    # Some Strava flows omit scope metadata in token/callback responses.
+    # Fall back to probing required API capabilities directly.
+    if not isinstance(athlete_payload.get("clubs"), list):
+        raise StravaOAuthError(
+            "Strava authorization is missing required profile access. "
+            "Please reconnect and approve all requested permissions."
+        )
+
+    try:
+        client.get_athlete_activities(
+            year=date.today().year,
+            per_page=1,
+            page_delay_seconds=0,
+            max_pages=1,
+        )
+    except StravaClientError as exc:
+        raise StravaOAuthError(
+            "Strava authorization is missing required activity access. "
+            "Please reconnect and approve all requested permissions."
+        ) from exc
 
 
 @dataclass(frozen=True)
@@ -43,6 +91,8 @@ def _save_user_from_athlete(
     settings: Settings,
     repository: SQLiteRepository,
     token_data: dict[str, str | int],
+    *,
+    granted_scope: str | None = None,
 ) -> AuthorizedUser:
     access_token = token_data.get("access_token")
     refresh_token = token_data.get("refresh_token")
@@ -63,6 +113,8 @@ def _save_user_from_athlete(
     )
 
     athlete = client.get_authenticated_athlete()
+    _validate_required_permissions(granted_scope, athlete_payload=athlete, client=client)
+
     verified_user_id = athlete.get("id")
     firstname = athlete.get("firstname")
     lastname = athlete.get("lastname")
@@ -131,6 +183,7 @@ def complete_oauth_flow(
     repository: SQLiteRepository,
     code: str,
     state: str,
+    granted_scope: str | None = None,
 ) -> AuthorizedUser:
     """Complete the web OAuth callback: validate state, exchange code, save user."""
     if not repository.consume_pending_oauth_state(state):
@@ -141,7 +194,12 @@ def complete_oauth_flow(
         client_secret=settings.strava_client_secret,
         redirect_uri=settings.app_base_url,
     )
-    return _save_user_from_athlete(settings, repository, token_data)
+    return _save_user_from_athlete(
+        settings,
+        repository,
+        token_data,
+        granted_scope=granted_scope,
+    )
 
 
 def authorize_and_store_user(
@@ -161,15 +219,20 @@ def authorize_and_store_user(
     if open_browser_window:
         webbrowser.open(authorize_url)
 
-    code = start_callback_listener(
+    callback = start_callback_listener_with_metadata(
         port=8765,
         timeout_seconds=300,
         expected_state=oauth_state,
     )
     token_data = exchange_code_for_tokens(
-        code=code,
+        code=callback.code,
         client_id=settings.strava_client_id,
         client_secret=settings.strava_client_secret,
         redirect_uri=redirect_uri,
     )
-    return _save_user_from_athlete(settings, repository, token_data)
+    return _save_user_from_athlete(
+        settings,
+        repository,
+        token_data,
+        granted_scope=callback.granted_scope,
+    )
