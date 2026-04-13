@@ -5,7 +5,6 @@ from typing import Any
 
 import altair as alt
 import streamlit as st
-import streamlit.components.v1 as components
 
 from app.config import load_settings
 from app.dashboard.goal_preferences import render_goal_preference
@@ -36,6 +35,12 @@ _SESSION_PRIVACY_KEY = "privacy_verified_user_id"
 _SESSION_VERIFIED_AT_KEY = "dashboard_verified_at_utc"
 _SESSION_TIMEOUT = timedelta(minutes=15)
 _SESSION_OAUTH_PENDING_URL_KEY = "oauth_pending_authorize_url"
+_SESSION_PRIVACY_OAUTH_PENDING_URL_KEY = "privacy_oauth_pending_authorize_url"
+
+
+def _clear_pending_oauth_urls() -> None:
+    st.session_state.pop(_SESSION_OAUTH_PENDING_URL_KEY, None)
+    st.session_state.pop(_SESSION_PRIVACY_OAUTH_PENDING_URL_KEY, None)
 
 
 def _query_param_int(key: str) -> int | None:
@@ -222,7 +227,7 @@ def _render_dashboard_main(
         st.caption(f"Viewing authorized members in club {active_club_id}.")
 
     st.subheader("Athlete progress")
-    st.dataframe(_progress_display_table(progress), use_container_width=True, hide_index=True)
+    st.dataframe(_progress_display_table(progress), width="stretch", hide_index=True)
 
     st.subheader("Year progress (cumulative km)")
     cumulative = cumulative_distance_progress(activities)
@@ -281,7 +286,7 @@ def _render_dashboard_main(
     )
 
     chart = (athlete_lines + guide_line).properties(height=420)
-    st.altair_chart(chart, use_container_width=True)
+    st.altair_chart(chart, width="stretch")
 
 
 def run_dashboard() -> None:
@@ -297,38 +302,49 @@ def run_dashboard() -> None:
     if handle_maintenance_request(settings, repository):
         return
 
+    oauth_callback_error_message: str | None = None
+
     # Detect Strava OAuth callback error from query params.
     oauth_error = _query_param_text("error")
     if oauth_error:
+        _clear_pending_oauth_urls()
         st.query_params.clear()
-        st.error(f"Strava authorization was not completed: {oauth_error}")
-        return
+        oauth_callback_error_message = f"Strava authorization was not completed: {oauth_error}"
 
     # Detect Strava OAuth web callback (code + state in URL after redirect).
     oauth_code = _query_param_text("code")
     oauth_state = _query_param_text("state")
+    oauth_scope = _query_param_text("scope")
     if oauth_code and oauth_state:
         complete_oauth_flow = getattr(oauth_auth, "complete_oauth_flow", None)
         if not callable(complete_oauth_flow):
             st.query_params.clear()
-            st.error(
+            oauth_callback_error_message = (
                 "OAuth callback handler is unavailable in this build. "
                 "Please redeploy or restart the app."
             )
-            return
-        try:
-            user = complete_oauth_flow(settings, repository, oauth_code, oauth_state)
-            _mark_viewer_verified(user.verified_user_id)
-            st.session_state.pop(_SESSION_OAUTH_PENDING_URL_KEY, None)
-            st.query_params.clear()
-            st.rerun()
-        except (StravaOAuthError, StravaClientError, ValueError) as exc:
-            st.session_state.pop(_SESSION_OAUTH_PENDING_URL_KEY, None)
-            st.query_params.clear()
-            st.error(f"Strava authorization failed: {exc}")
-        return
+        else:
+            try:
+                user = complete_oauth_flow(
+                    settings,
+                    repository,
+                    oauth_code,
+                    oauth_state,
+                    granted_scope=oauth_scope,
+                )
+                _mark_viewer_verified(user.verified_user_id)
+                _clear_pending_oauth_urls()
+                st.query_params.clear()
+                st.rerun()
+            except (StravaOAuthError, StravaClientError, ValueError) as exc:
+                _clear_pending_oauth_urls()
+                st.query_params.clear()
+                oauth_callback_error_message = f"Strava authorization failed: {exc}"
 
     st.title("Strava Goal Tracker")
+    if oauth_callback_error_message:
+        st.error(oauth_callback_error_message)
+
     auto_sync_key = "dashboard_auto_sync_checked"
     viewer_key = _SESSION_VIEWER_KEY
 
@@ -408,29 +424,26 @@ def run_dashboard() -> None:
         pending_authorize_url = st.session_state.get(_SESSION_OAUTH_PENDING_URL_KEY)
         if isinstance(pending_authorize_url, str) and pending_authorize_url:
             st.sidebar.info(
-                "Opening Strava authorization in a new tab. "
-                "If nothing opens, click the button below."
+                "Continue authorization in this same tab to ensure "
+                "the callback updates this session."
+            )
+            st.sidebar.markdown(
+                f'<a href="{pending_authorize_url}" target="_self">'
+                "Continue OAuth in this tab"
+                "</a>",
+                unsafe_allow_html=True,
             )
             st.sidebar.link_button(
-                "✓ Open Strava Authorization",
+                "Open Strava Authorization (new tab)",
                 pending_authorize_url,
-                type="primary",
-                use_container_width=True,
+                width="stretch",
             )
-            # Try desktop auto-redirect (works on desktop, harmless on mobile).
-            # Mobile will use the direct link button above.
-            components.html(
-                f"""
-                <script>
-                try {{
-                  window.location.href = {pending_authorize_url!r};
-                }} catch(e) {{
-                  console.log('Auto-redirect unavailable, use button above.');
-                }}
-                </script>
-                """,
-                height=0,
-            )
+            if st.sidebar.button("I completed authorization"):
+                _clear_pending_oauth_urls()
+                st.rerun()
+            if st.sidebar.button("Start authorization over"):
+                _clear_pending_oauth_urls()
+                st.rerun()
     else:
         # Local server flow (local dev / CLI)
         if st.sidebar.button("Connect Strava Account"):
