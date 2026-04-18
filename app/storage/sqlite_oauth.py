@@ -14,6 +14,7 @@ class SQLiteOAuthMixin(SQLiteRepositoryProtocol):
         access_token: str,
         refresh_token: str | None,
         access_token_expires_at: int | None,
+        accepted_scope: str | None = None,
     ) -> None:
         encrypted_access_token = self._encrypt_token(access_token)
         encrypted_refresh_token = self._encrypt_token(refresh_token)
@@ -23,12 +24,13 @@ class SQLiteOAuthMixin(SQLiteRepositoryProtocol):
                 """
                 INSERT INTO oauth_tokens (
                     token_id, verified_user_id, access_token, refresh_token,
-                    access_token_expires_at, created_at, updated_at
+                    accepted_scope, access_token_expires_at, created_at, updated_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(token_id) DO UPDATE SET
                     access_token = excluded.access_token,
                     refresh_token = excluded.refresh_token,
+                    accepted_scope = COALESCE(excluded.accepted_scope, oauth_tokens.accepted_scope),
                     access_token_expires_at = excluded.access_token_expires_at,
                     updated_at = excluded.updated_at
                 """,
@@ -37,6 +39,7 @@ class SQLiteOAuthMixin(SQLiteRepositoryProtocol):
                     verified_user_id,
                     encrypted_access_token,
                     encrypted_refresh_token,
+                    accepted_scope,
                     access_token_expires_at,
                     now,
                     now,
@@ -66,7 +69,8 @@ class SQLiteOAuthMixin(SQLiteRepositoryProtocol):
     ) -> dict[str, str | int | None] | None:
         with self._connect() as conn:
             row = conn.execute(
-                "SELECT access_token, refresh_token, access_token_expires_at, verified_user_id "
+                "SELECT access_token, refresh_token, accepted_scope, "
+                "access_token_expires_at, verified_user_id "
                 "FROM oauth_tokens WHERE token_id = ?",
                 (token_id,),
             ).fetchone()
@@ -75,8 +79,9 @@ class SQLiteOAuthMixin(SQLiteRepositoryProtocol):
         return {
             "access_token": self._decrypt_token(row[0]) if isinstance(row[0], str) else None,
             "refresh_token": self._decrypt_token(row[1]) if isinstance(row[1], str) else None,
-            "access_token_expires_at": row[2],
-            "verified_user_id": row[3],
+            "accepted_scope": row[2],
+            "access_token_expires_at": row[3],
+            "verified_user_id": row[4],
         }
 
     def get_oauth_token_by_verified_user_id(
@@ -85,7 +90,8 @@ class SQLiteOAuthMixin(SQLiteRepositoryProtocol):
     ) -> dict[str, str | int | None] | None:
         with self._connect() as conn:
             row = conn.execute(
-                "SELECT token_id, access_token, refresh_token, access_token_expires_at "
+                "SELECT token_id, access_token, refresh_token, accepted_scope, "
+                "access_token_expires_at "
                 "FROM oauth_tokens WHERE verified_user_id = ?",
                 (verified_user_id,),
             ).fetchone()
@@ -95,7 +101,8 @@ class SQLiteOAuthMixin(SQLiteRepositoryProtocol):
             "token_id": row[0],
             "access_token": self._decrypt_token(row[1]) if isinstance(row[1], str) else None,
             "refresh_token": self._decrypt_token(row[2]) if isinstance(row[2], str) else None,
-            "access_token_expires_at": row[3],
+            "accepted_scope": row[3],
+            "access_token_expires_at": row[4],
             "verified_user_id": verified_user_id,
         }
 
@@ -117,6 +124,7 @@ class SQLiteOAuthMixin(SQLiteRepositoryProtocol):
                     v.firstname,
                     v.lastname,
                     v.email,
+                    t.accepted_scope,
                     t.access_token_expires_at,
                     t.last_sync_utc
                 FROM oauth_tokens t
@@ -131,8 +139,9 @@ class SQLiteOAuthMixin(SQLiteRepositoryProtocol):
                 "firstname": row[2],
                 "lastname": row[3],
                 "email": row[4],
-                "access_token_expires_at": row[5],
-                "last_sync_utc": row[6],
+                "accepted_scope": row[5],
+                "access_token_expires_at": row[6],
+                "last_sync_utc": row[7],
             }
             for row in rows
         ]
@@ -149,6 +158,7 @@ class SQLiteOAuthMixin(SQLiteRepositoryProtocol):
                     v.email,
                     t.access_token,
                     t.refresh_token,
+                    t.accepted_scope,
                     t.access_token_expires_at,
                     t.last_sync_utc,
                     t.created_at
@@ -168,9 +178,10 @@ class SQLiteOAuthMixin(SQLiteRepositoryProtocol):
             "email": row[4],
             "access_token": self._decrypt_token(row[5]) if isinstance(row[5], str) else None,
             "refresh_token": self._decrypt_token(row[6]) if isinstance(row[6], str) else None,
-            "access_token_expires_at": row[7],
-            "last_sync_utc": row[8],
-            "created_at": row[9],
+            "accepted_scope": row[7],
+            "access_token_expires_at": row[8],
+            "last_sync_utc": row[9],
+            "created_at": row[10],
         }
 
     def list_inactive_oauth_accounts(self, cutoff_utc: datetime) -> list[dict[str, Any]]:
@@ -186,6 +197,7 @@ class SQLiteOAuthMixin(SQLiteRepositoryProtocol):
                     v.email,
                     t.access_token,
                     t.refresh_token,
+                    t.accepted_scope,
                     t.access_token_expires_at,
                     t.last_sync_utc,
                     t.created_at
@@ -205,9 +217,10 @@ class SQLiteOAuthMixin(SQLiteRepositoryProtocol):
                 "email": row[4],
                 "access_token": self._decrypt_token(row[5]) if isinstance(row[5], str) else None,
                 "refresh_token": self._decrypt_token(row[6]) if isinstance(row[6], str) else None,
-                "access_token_expires_at": row[7],
-                "last_sync_utc": row[8],
-                "created_at": row[9],
+                "accepted_scope": row[7],
+                "access_token_expires_at": row[8],
+                "last_sync_utc": row[9],
+                "created_at": row[10],
             }
             for row in rows
         ]

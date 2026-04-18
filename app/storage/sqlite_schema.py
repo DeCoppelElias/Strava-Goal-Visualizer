@@ -72,6 +72,7 @@ class SQLiteSchemaMixin(SQLiteRepositoryProtocol):
                     verified_user_id INTEGER NOT NULL,
                     access_token TEXT NOT NULL,
                     refresh_token TEXT,
+                    accepted_scope TEXT,
                     access_token_expires_at INTEGER,
                     last_sync_utc TEXT,
                     created_at TEXT NOT NULL,
@@ -80,6 +81,8 @@ class SQLiteSchemaMixin(SQLiteRepositoryProtocol):
                 )
                 """
             )
+            if not self._column_exists(conn, "oauth_tokens", "accepted_scope"):
+                conn.execute("ALTER TABLE oauth_tokens ADD COLUMN accepted_scope TEXT")
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS athlete_identity_links (

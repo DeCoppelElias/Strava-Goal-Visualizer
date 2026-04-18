@@ -175,3 +175,44 @@ def test_refresh_access_token_raises_on_http_error() -> None:
 
     with pytest.raises(StravaClientError, match="token refresh failed"):
         client._refresh_access_token()
+
+
+def test_deauthorize_sends_access_token_payload() -> None:
+    client = StravaClient(access_token="token")
+    fake_session = MagicMock()
+    fake_session.headers = {"Authorization": "Bearer token"}
+    fake_session.post.return_value = _response(200, body_text="ok")
+    client._session = fake_session
+
+    client.deauthorize()
+
+    call = fake_session.post.call_args
+    assert call is not None
+    assert call.kwargs["data"] == {"access_token": "token"}
+
+
+def test_current_token_state_reflects_refresh_updates() -> None:
+    client = StravaClient(
+        access_token="token",
+        client_id=123,
+        client_secret="secret",
+        refresh_token="refresh",
+    )
+    fake_session = MagicMock()
+    fake_session.headers = {}
+    fake_session.post.return_value = _json_response(
+        200,
+        {
+            "access_token": "new_token",
+            "refresh_token": "new_refresh",
+            "expires_at": 1893456000,
+        },
+    )
+    client._session = fake_session
+
+    client._refresh_access_token()
+    token_state = client.current_token_state()
+
+    assert token_state["access_token"] == "new_token"
+    assert token_state["refresh_token"] == "new_refresh"
+    assert token_state["access_token_expires_at"] == 1893456000

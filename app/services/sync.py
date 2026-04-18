@@ -77,6 +77,7 @@ def sync_verified_user_runs(settings: Settings, verified_user_id: int) -> SyncRe
 
     access_token = token_data.get("access_token")
     refresh_token = token_data.get("refresh_token")
+    accepted_scope = token_data.get("accepted_scope")
     expires_at = token_data.get("access_token_expires_at")
     token_id = token_data.get("token_id")
 
@@ -114,6 +115,24 @@ def sync_verified_user_runs(settings: Settings, verified_user_id: int) -> SyncRe
         page_delay_seconds=settings.sync_page_delay_seconds,
         max_pages=settings.sync_max_pages,
     )
+
+    refreshed_token_state = client.current_token_state()
+    refreshed_access_token = refreshed_token_state.get("access_token")
+    refreshed_refresh_token = refreshed_token_state.get("refresh_token")
+    refreshed_expires_at = refreshed_token_state.get("access_token_expires_at")
+    if isinstance(refreshed_access_token, str) and refreshed_access_token:
+        repository.save_oauth_token(
+            token_id=token_id,
+            verified_user_id=verified_user_id,
+            access_token=refreshed_access_token,
+            refresh_token=(
+                refreshed_refresh_token if isinstance(refreshed_refresh_token, str) else None
+            ),
+            access_token_expires_at=(
+                refreshed_expires_at if isinstance(refreshed_expires_at, int) else None
+            ),
+            accepted_scope=accepted_scope if isinstance(accepted_scope, str) else None,
+        )
 
     run_activities = [
         _to_club_activity(

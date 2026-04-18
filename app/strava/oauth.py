@@ -31,6 +31,7 @@ def build_authorize_url(
     redirect_uri: str = "http://localhost:8765/callback",
     scope: str = "activity:read_all,profile:read_all",
     state: str = "strava_auth",
+    approval_prompt: str = "auto",
 ) -> str:
     """Build Strava OAuth authorize URL.
 
@@ -39,6 +40,7 @@ def build_authorize_url(
         redirect_uri: Where Strava redirects after user approves (must match app settings)
         scope: Comma-separated scopes
         state: Anti-forgery token (simple static string for this implementation)
+        approval_prompt: Use "auto" for normal reconnects or "force" to always prompt
 
     Returns:
         Full Strava authorize URL to open in browser
@@ -47,7 +49,7 @@ def build_authorize_url(
         "client_id": client_id,
         "response_type": "code",
         "redirect_uri": redirect_uri,
-        "approval_prompt": "force",
+        "approval_prompt": approval_prompt,
         "scope": scope,
         "state": state,
     }

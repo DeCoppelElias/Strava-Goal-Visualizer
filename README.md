@@ -70,6 +70,13 @@ python main.py oauth-authorize
 python main.py oauth-list
 ```
 
+OAuth behavior notes:
+- The app uses Strava web OAuth (`/oauth/authorize`) which works in desktop and mobile browsers.
+- Required scopes are `activity:read_all` and `profile:read_all`; callback scopes are validated when present.
+- If scope metadata is missing, the app falls back to API capability probes before accepting authorization.
+- Accepted callback scopes are stored locally for troubleshooting.
+- Refresh and access token updates returned by Strava are persisted after sync operations.
+
 ### Syncing Activities
 ```bash
 # Sync all authorized athletes

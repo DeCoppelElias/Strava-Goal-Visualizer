@@ -43,9 +43,10 @@
 
         <h2>How It Works</h2>
         <ol>
-          <li>You authorize your Strava account via secure OAuth</li>
+          <li>You authorize your Strava account via secure OAuth (web flow works on desktop and mobile browsers)</li>
           <li>Goal Visualizer fetches your Run activities</li>
           <li>Data is stored in a local SQLite database (OAuth tokens encrypted at rest)</li>
+          <li>Accepted OAuth callback scopes are validated and stored for troubleshooting</li>
           <li>Dashboard generates your personalized analytics</li>
           <li>You can disconnect and delete anytime</li>
         </ol>
@@ -64,6 +65,7 @@
           <li>SQLite for local data storage</li>
           <li>Fernet encryption for OAuth token security</li>
           <li>Strava v3 API (activity:read_all, profile:read_all scopes)</li>
+          <li>Short-lived token refresh with persisted token rotation</li>
           <li>Deployed on Render (HTTPS enforced)</li>
         </ul>
 

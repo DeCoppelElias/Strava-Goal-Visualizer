@@ -145,6 +145,7 @@ def _save_user_from_athlete(
         access_token=access_token,
         refresh_token=refresh_token if isinstance(refresh_token, str) else None,
         access_token_expires_at=expires_at,
+        accepted_scope=granted_scope,
     )
 
     return AuthorizedUser(

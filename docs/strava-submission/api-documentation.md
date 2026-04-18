@@ -48,7 +48,12 @@ power data, and all other fields not listed above
 **When:** Initial token exchange after OAuth authorization; automatic token refresh when
 access token expires
 **Purpose:** Obtain and maintain valid access tokens
-**No user data is read from this endpoint**
+**No athlete activity/profile data is read from this endpoint**
+
+Notes:
+- Token exchange response fields used: `access_token`, `refresh_token`, `expires_at`
+- Accepted scopes are read from the OAuth callback (`scope` query parameter) when present
+- Latest refresh/access token values are persisted after refresh during sync
 
 ---
 
@@ -57,6 +62,25 @@ access token expires
 **When:** When the user clicks "Disconnect & Delete Everything" in Privacy Settings
 **Purpose:** Revoke the app's Strava authorization for that user
 **No user data is read from this endpoint**
+
+Request details:
+- Sends `access_token` in the deauthorize request payload
+- Uses the authenticated token context from the current account session
+
+---
+
+## OAuth Callback Validation
+
+After user approval, Strava redirects with callback query parameters including `code`, `state`,
+and typically `scope`.
+
+Validation behavior:
+- `state` is required and must match a saved short-lived pending state (CSRF protection)
+- If callback `scope` is present, required permissions are validated immediately
+- If callback `scope` is absent, capability probes are used (`GET /athlete` clubs field and
+  a minimal `GET /athlete/activities` request)
+
+The app requests `approval_prompt=auto` by default to avoid unnecessary repeated consent prompts.
 
 ---
 

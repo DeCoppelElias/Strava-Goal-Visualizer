@@ -28,7 +28,7 @@ class TestBuildAuthorizeUrl:
         assert "response_type=code" in url
         assert "redirect_uri=http%3A%2F%2Flocalhost%3A8765%2Fcallback" in url
         assert "scope=activity%3Aread_all%2Cprofile%3Aread_all" in url
-        assert "approval_prompt=force" in url
+        assert "approval_prompt=auto" in url
 
     def test_build_authorize_url_custom_redirect(self) -> None:
         """Should accept custom redirect_uri."""
