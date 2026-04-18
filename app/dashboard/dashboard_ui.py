@@ -36,11 +36,19 @@ _SESSION_VERIFIED_AT_KEY = "dashboard_verified_at_utc"
 _SESSION_TIMEOUT = timedelta(minutes=15)
 _SESSION_OAUTH_PENDING_URL_KEY = "oauth_pending_authorize_url"
 _SESSION_PRIVACY_OAUTH_PENDING_URL_KEY = "privacy_oauth_pending_authorize_url"
+_SESSION_POST_OAUTH_CLUB_ID_KEY = "post_oauth_club_id"
 
 
 def _clear_pending_oauth_urls() -> None:
     st.session_state.pop(_SESSION_OAUTH_PENDING_URL_KEY, None)
     st.session_state.pop(_SESSION_PRIVACY_OAUTH_PENDING_URL_KEY, None)
+
+
+def _apply_post_oauth_navigation() -> None:
+    post_oauth_club_id = st.session_state.pop(_SESSION_POST_OAUTH_CLUB_ID_KEY, None)
+    st.query_params.clear()
+    if isinstance(post_oauth_club_id, int) and post_oauth_club_id > 0:
+        st.query_params["club_id"] = str(post_oauth_club_id)
 
 
 def _query_param_int(key: str) -> int | None:
@@ -308,7 +316,7 @@ def run_dashboard() -> None:
     oauth_error = _query_param_text("error")
     if oauth_error:
         _clear_pending_oauth_urls()
-        st.query_params.clear()
+        _apply_post_oauth_navigation()
         oauth_callback_error_message = f"Strava authorization was not completed: {oauth_error}"
 
     # Detect Strava OAuth web callback (code + state in URL after redirect).
@@ -318,7 +326,7 @@ def run_dashboard() -> None:
     if oauth_code and oauth_state:
         complete_oauth_flow = getattr(oauth_auth, "complete_oauth_flow", None)
         if not callable(complete_oauth_flow):
-            st.query_params.clear()
+            _apply_post_oauth_navigation()
             oauth_callback_error_message = (
                 "OAuth callback handler is unavailable in this build. "
                 "Please redeploy or restart the app."
@@ -334,11 +342,11 @@ def run_dashboard() -> None:
                 )
                 _mark_viewer_verified(user.verified_user_id)
                 _clear_pending_oauth_urls()
-                st.query_params.clear()
+                _apply_post_oauth_navigation()
                 st.rerun()
             except (StravaOAuthError, StravaClientError, ValueError) as exc:
                 _clear_pending_oauth_urls()
-                st.query_params.clear()
+                _apply_post_oauth_navigation()
                 oauth_callback_error_message = f"Strava authorization failed: {exc}"
 
     st.title("Strava Goal Tracker")
@@ -369,6 +377,12 @@ def run_dashboard() -> None:
     }
     if viewer_user_id not in valid_viewer_ids:
         viewer_user_id = None
+    if viewer_user_id is None and len(oauth_accounts) == 1:
+        only_account = oauth_accounts[0]
+        only_verified_user_id = only_account.get("verified_user_id")
+        if isinstance(only_verified_user_id, int):
+            _mark_viewer_verified(only_verified_user_id)
+            viewer_user_id = only_verified_user_id
     viewer_last_sync_utc = (
         account_last_sync_utc(oauth_accounts, viewer_user_id)
         if viewer_user_id is not None
@@ -416,6 +430,7 @@ def run_dashboard() -> None:
                 return
             try:
                 authorize_url = begin_oauth_flow(settings, repository)
+                st.session_state[_SESSION_POST_OAUTH_CLUB_ID_KEY] = active_club_id
                 st.session_state[_SESSION_OAUTH_PENDING_URL_KEY] = authorize_url
                 st.rerun()
             except (ValueError, StravaOAuthError) as exc:
