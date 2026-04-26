@@ -2,11 +2,9 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
-from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import streamlit as st
-import streamlit.components.v1 as components
 
 from app.services.account_lifecycle import revoke_account_if_requested
 from app.services.oauth_auth import authorize_and_store_user
@@ -33,16 +31,16 @@ def _legal_links(settings: Any) -> None:
     col_about, col_policy, col_terms, col_deletion = st.columns(4)
     with col_about:
         if about_url:
-            st.link_button("About this app", about_url, use_container_width=True)
+            st.link_button("About this app", about_url, width="stretch")
     with col_policy:
         if policy_url:
-            st.link_button("Privacy policy", policy_url, use_container_width=True)
+            st.link_button("Privacy policy", policy_url, width="stretch")
     with col_terms:
         if terms_url:
-            st.link_button("Terms", terms_url, use_container_width=True)
+            st.link_button("Terms", terms_url, width="stretch")
     with col_deletion:
         if deletion_url:
-            st.link_button("Data deletion", deletion_url, use_container_width=True)
+            st.link_button("Data deletion", deletion_url, width="stretch")
 
 
 def _privacy_policy_notice(settings: Any) -> None:
@@ -98,25 +96,6 @@ def render_privacy_settings(
     mark_viewer_verified: Callable[[int], None],
     clear_viewer_session: Callable[[], None],
 ) -> None:
-    # Check session timeout (15 minutes between verifications)
-    _SESSION_TIMEOUT = timedelta(minutes=15)
-    _SESSION_VERIFIED_AT_KEY = "dashboard_verified_at_utc"
-
-    verified_at_str = st.session_state.get(_SESSION_VERIFIED_AT_KEY)
-    if verified_at_str:
-        try:
-            verified_at_dt = datetime.fromisoformat(verified_at_str)
-            age = datetime.now(UTC) - verified_at_dt
-            if age > _SESSION_TIMEOUT:
-                st.warning(
-                    f"⏱️ Session expired after {_SESSION_TIMEOUT.total_seconds() / 60:.0f} minutes. "
-                    "Please verify your identity again."
-                )
-                clear_viewer_session()
-                st.stop()
-        except (ValueError, TypeError):
-            pass  # Invalid timestamp format, continue
-
     _privacy_policy_notice(settings)
 
     export_json = "{}"
@@ -130,7 +109,7 @@ def render_privacy_settings(
 
     if settings.app_base_url and not pending_authorize_url:
         # Web redirect flow (deployed)
-        if st.button("Verify My Identity With Strava", use_container_width=True):
+        if st.button("Verify My Identity With Strava", width="stretch"):
             try:
                 from app.services.oauth_auth import begin_oauth_flow
 
@@ -142,31 +121,28 @@ def render_privacy_settings(
     elif pending_authorize_url:
         # Web redirect pending
         st.info(
-            "Opening Strava authorization in a new tab. "
-            "If nothing opens, click the button below."
+            "Continue authorization in this same tab to ensure the callback updates this session."
+        )
+        st.markdown(
+            f'<a href="{pending_authorize_url}" target="_self">'
+            "Continue OAuth in this tab"
+            "</a>",
+            unsafe_allow_html=True,
         )
         st.link_button(
-            "✓ Open Strava Authorization",
+            "Open Strava Authorization (new tab)",
             pending_authorize_url,
-            type="primary",
-            use_container_width=True,
+            width="stretch",
         )
-        # Try desktop auto-redirect (works on desktop, harmless on mobile).
-        components.html(
-            f"""
-            <script>
-            try {{
-              window.location.href = {pending_authorize_url!r};
-            }} catch(e) {{
-              console.log('Auto-redirect unavailable, use button above.');
-            }}
-            </script>
-            """,
-            height=0,
-        )
+        if st.button("I completed authorization"):
+            st.session_state.pop(_oauth_pending_url_key, None)
+            st.rerun()
+        if st.button("Start authorization over"):
+            st.session_state.pop(_oauth_pending_url_key, None)
+            st.rerun()
     else:
         # Local server flow (local dev / CLI)
-        if st.button("Verify My Identity With Strava", use_container_width=True):
+        if st.button("Verify My Identity With Strava", width="stretch"):
             try:
                 with st.spinner("Waiting for Strava OAuth callback..."):
                     user = authorize_and_store_user(

@@ -58,20 +58,23 @@ marketed for broad public use and has no advertising or monetization.
 2. App redirects user to Strava OAuth authorization page
 3. User approves access; Strava redirects back with an authorization code
 4. App exchanges the code for an access + refresh token pair
-5. Tokens are stored locally in SQLite, **encrypted at rest using Fernet**
-6. App fetches the user's Run activities for the current year via the Strava v3 API
-7. Activity records are stored locally in SQLite for dashboard analytics
-8. Dashboard renders progress metrics and charts from local storage
-9. Tokens are auto-refreshed when expired; no manual re-authorization required
+5. Callback `state` is validated and callback `scope` is checked when present
+6. Tokens are stored locally in SQLite, **encrypted at rest using Fernet**
+7. Accepted callback scopes are stored for troubleshooting
+8. App fetches the user's Run activities for the current year via the Strava v3 API
+9. Activity records are stored locally in SQLite for dashboard analytics
+10. Dashboard renders progress metrics and charts from local storage
+11. Tokens are auto-refreshed when expired and the latest refresh/access token values are persisted
 
 ---
 
 ## Data Handling Summary
 
-- **Stored:** Athlete id, first/last name, OAuth tokens (encrypted), Run activity records,
+- **Stored:** Athlete id, first/last name, optional email if provided by Strava,
+  accepted OAuth scope metadata, OAuth tokens (encrypted), Run activity records,
   privacy request audit log
-- **Not stored:** Email, phone, location, private activities, heart rate, or any data
-  beyond what is listed above
+- **Not stored:** Phone, precise address, payment data, social graph data, photos,
+  heart rate, or other activity fields beyond the documented analytics set
 - **Not shared:** No data is sold, shared with third parties, or used for advertising
 - **Deletion:** Users can delete all their stored data instantly from the Privacy Settings
   screen; the app also attempts to revoke Strava authorization at that time

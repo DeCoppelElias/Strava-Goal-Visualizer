@@ -33,6 +33,7 @@ Save files into this folder: `docs/strava-submission/screenshots/`
 
 **Steps:**
 1. Open http://localhost:8501/?club_id=<your-strava-club-id>
+2. If prompted to authorize, complete OAuth and confirm you return to the same `?club_id=` view
 2. Take full-page screenshot
 
 ---
@@ -57,12 +58,16 @@ Save files into this folder: `docs/strava-submission/screenshots/`
 ### 4. `04_oauth_connect.png` — OAuth connect flow
 **What to show:**
 - The "Connect Strava Account" button in the sidebar
+- The in-app OAuth pending state controls:
+   - "Continue OAuth in this tab"
+   - "Open Strava Authorization (new tab)"
 - Ideally the Strava authorization page open in browser (shows scopes requested)
 
 **Steps:**
 1. Open the dashboard with no connected accounts
 2. Click "Connect Strava Account" to trigger the OAuth flow
-3. Screenshot the browser showing the Strava authorization page
+3. Screenshot the dashboard pending-OAuth controls
+4. Screenshot the browser showing the Strava authorization page
    (shows "Goal Visualizer wants to access your account" with scopes listed)
 
 ---

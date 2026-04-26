@@ -6,28 +6,28 @@ from typing import Any
 
 import altair as alt
 import streamlit as st
-import streamlit.components.v1 as components
 
 from app.config import load_settings
+from app.dashboard.dashboard_cache import (
+    cached_activities,
+    cached_available_years,
+    cached_club_summary,
+    cached_cumulative,
+    cached_goal_map,
+    cached_guide,
+    cached_progress,
+    cached_summary,
+)
 from app.dashboard.goal_preferences import render_goal_preference
 from app.dashboard.privacy_settings import render_privacy_settings
 from app.maintenance.runner import handle_maintenance_request
 from app.services import oauth_auth
-from app.services.dashboard_data import available_years, fetch_view_activities, fetch_view_goal_map
 from app.services.dashboard_sync import (
     account_last_sync_utc,
     latest_sync_utc,
     manual_sync_cooldown_remaining_seconds,
-    parse_last_sync_utc,
     run_sync_for_club_members,
     run_sync_for_viewer,
-)
-from app.services.metrics import (
-    athlete_progress_table,
-    club_completion_summary,
-    club_summary,
-    cumulative_distance_progress,
-    one_km_per_day_guide,
 )
 from app.storage.sqlite import SQLiteRepository
 from app.strava.client import StravaClientError
@@ -35,9 +35,21 @@ from app.strava.oauth import StravaOAuthError
 
 _SESSION_VIEWER_KEY = "dashboard_verified_user_id"
 _SESSION_PRIVACY_KEY = "privacy_verified_user_id"
-_SESSION_VERIFIED_AT_KEY = "dashboard_verified_at_utc"
-_SESSION_TIMEOUT = timedelta(minutes=15)
 _SESSION_OAUTH_PENDING_URL_KEY = "oauth_pending_authorize_url"
+_SESSION_PRIVACY_OAUTH_PENDING_URL_KEY = "privacy_oauth_pending_authorize_url"
+_SESSION_POST_OAUTH_CLUB_ID_KEY = "post_oauth_club_id"
+
+
+def _clear_pending_oauth_urls() -> None:
+    st.session_state.pop(_SESSION_OAUTH_PENDING_URL_KEY, None)
+    st.session_state.pop(_SESSION_PRIVACY_OAUTH_PENDING_URL_KEY, None)
+
+
+def _apply_post_oauth_navigation() -> None:
+    post_oauth_club_id = st.session_state.pop(_SESSION_POST_OAUTH_CLUB_ID_KEY, None)
+    st.query_params.clear()
+    if isinstance(post_oauth_club_id, int) and post_oauth_club_id > 0:
+        st.query_params["club_id"] = str(post_oauth_club_id)
 
 
 @dataclass
@@ -124,6 +136,7 @@ def _progress_display_table(progress: Any) -> Any:
                 "run_count",
                 "distance_km",
                 "goal_km",
+                "days_elapsed",
                 "completion_pct",
                 "remaining_km",
             ],
@@ -134,6 +147,7 @@ def _progress_display_table(progress: Any) -> Any:
                 "run_count": "Runs",
                 "distance_km": "Distance (km)",
                 "goal_km": "Goal (km)",
+                "days_elapsed": "Days",
                 "completion_pct": "Completion (%)",
                 "remaining_km": "Remaining (km)",
             }
@@ -144,28 +158,11 @@ def _progress_display_table(progress: Any) -> Any:
 def _mark_viewer_verified(verified_user_id: int) -> None:
     st.session_state[_SESSION_VIEWER_KEY] = verified_user_id
     st.session_state[_SESSION_PRIVACY_KEY] = verified_user_id
-    st.session_state[_SESSION_VERIFIED_AT_KEY] = datetime.now(UTC).isoformat()
 
 
 def _clear_viewer_session() -> None:
     st.session_state.pop(_SESSION_VIEWER_KEY, None)
     st.session_state.pop(_SESSION_PRIVACY_KEY, None)
-    st.session_state.pop(_SESSION_VERIFIED_AT_KEY, None)
-
-
-def _viewer_session_is_fresh(*, now_utc: datetime) -> bool:
-    verified_at_raw = st.session_state.get(_SESSION_VERIFIED_AT_KEY)
-    if not isinstance(verified_at_raw, str):
-        return False
-    try:
-        verified_at = datetime.fromisoformat(verified_at_raw)
-    except ValueError:
-        return False
-    if verified_at.tzinfo is None:
-        verified_at = verified_at.replace(tzinfo=UTC)
-    else:
-        verified_at = verified_at.astimezone(UTC)
-    return (now_utc - verified_at) <= _SESSION_TIMEOUT
 
 
 def _load_account_context(repository: SQLiteRepository, *, viewer_key: str) -> _DashboardAccountContext:
@@ -289,7 +286,7 @@ def _render_dashboard_main(
         st.error("You are not authorized to view this club leaderboard.")
         return
 
-    years = available_years(
+    years = cached_available_years(
         repository,
         verified_user_id=None if active_club_id is not None else viewer_user_id,
         club_id=active_club_id,
@@ -298,7 +295,7 @@ def _render_dashboard_main(
     default_year_index = years.index(current_year) if current_year in years else 0
     selected_year = st.selectbox("Year", options=years, index=default_year_index)
 
-    activities = fetch_view_activities(
+    activities = cached_activities(
         repository,
         year=selected_year,
         verified_user_id=None if active_club_id is not None else viewer_user_id,
@@ -314,7 +311,7 @@ def _render_dashboard_main(
             )
         return
 
-    goal_map = fetch_view_goal_map(
+    goal_map = cached_goal_map(
         repository,
         activities=activities,
         verified_user_id=None if active_club_id is not None else viewer_user_id,
@@ -325,15 +322,16 @@ def _render_dashboard_main(
     if active_club_id is None:
         # Personal view: goal_map is a single float
         guide_goal_km = goal_map if isinstance(goal_map, float) else settings.annual_goal_km
-        progress = athlete_progress_table(activities, guide_goal_km)
+        progress = cached_progress(activities, guide_goal_km, selected_year)
     else:
         # Club view: goal_map is a dict
-        progress = athlete_progress_table(
+        progress = cached_progress(
             activities,
             goal_map if isinstance(goal_map, dict) else settings.annual_goal_km,
+            selected_year,
         )
 
-    summary = club_summary(progress)
+    summary = cached_summary(progress)
     metric_col_1, metric_col_2, metric_col_3 = st.columns(3)
     if active_club_id is None:
         metric_col_1.metric("Your total distance", f"{summary.total_distance_km:.1f} km")
@@ -341,7 +339,7 @@ def _render_dashboard_main(
         metric_col_3.metric("Your completion", f"{summary.completion_pct:.1f}%")
         st.caption("Default view is private to your account.")
     else:
-        club_progress = club_completion_summary(progress)
+        club_progress = cached_club_summary(progress)
         metric_col_1.metric("Athletes tracked", f"{club_progress.athlete_count}")
         metric_col_2.metric("Avg completion", f"{club_progress.average_completion_pct:.1f}%")
         metric_col_3.metric(
@@ -351,10 +349,10 @@ def _render_dashboard_main(
         st.caption(f"Viewing authorized members in club {active_club_id}.")
 
     st.subheader("Athlete progress")
-    st.dataframe(_progress_display_table(progress), use_container_width=True, hide_index=True)
+    st.dataframe(_progress_display_table(progress), width="stretch", hide_index=True)
 
     st.subheader("Year progress (cumulative km)")
-    cumulative = cumulative_distance_progress(activities)
+    cumulative = cached_cumulative(activities)
 
     athlete_chart_data = cumulative.rename(
         columns={
@@ -363,9 +361,9 @@ def _render_dashboard_main(
         }
     )[["date", "series", "km"]]
 
-    guide_data = one_km_per_day_guide(
+    guide_data = cached_guide(
         selected_year,
-        annual_goal_km=guide_goal_km,
+        goal_km=guide_goal_km,
     ).rename(columns={"guide_km": "km"})
     guide_data["series"] = f"On-track guide ({guide_goal_km:.0f} km goal)"
 
@@ -410,7 +408,7 @@ def _render_dashboard_main(
     )
 
     chart = (athlete_lines + guide_line).properties(height=420)
-    st.altair_chart(chart, use_container_width=True)
+    st.altair_chart(chart, width="stretch")
 
 
 def run_dashboard() -> None:
@@ -426,28 +424,74 @@ def run_dashboard() -> None:
     if handle_maintenance_request(settings, repository):
         return
 
-    if _handle_oauth_query_callback(settings, repository):
-        return
+    oauth_callback_error_message: str | None = None
+
+    # Detect Strava OAuth callback error from query params.
+    oauth_error = _query_param_text("error")
+    if oauth_error:
+        _clear_pending_oauth_urls()
+        _apply_post_oauth_navigation()
+        oauth_callback_error_message = f"Strava authorization was not completed: {oauth_error}"
+
+    # Detect Strava OAuth web callback (code + state in URL after redirect).
+    oauth_code = _query_param_text("code")
+    oauth_state = _query_param_text("state")
+    oauth_scope = _query_param_text("scope")
+    if oauth_code and oauth_state:
+        complete_oauth_flow = getattr(oauth_auth, "complete_oauth_flow", None)
+        if not callable(complete_oauth_flow):
+            _apply_post_oauth_navigation()
+            oauth_callback_error_message = (
+                "OAuth callback handler is unavailable in this build. "
+                "Please redeploy or restart the app."
+            )
+        else:
+            try:
+                user = complete_oauth_flow(
+                    settings,
+                    repository,
+                    oauth_code,
+                    oauth_state,
+                    granted_scope=oauth_scope,
+                )
+                _mark_viewer_verified(user.verified_user_id)
+                _clear_pending_oauth_urls()
+                _apply_post_oauth_navigation()
+                st.rerun()
+            except (StravaOAuthError, StravaClientError, ValueError) as exc:
+                _clear_pending_oauth_urls()
+                _apply_post_oauth_navigation()
+                oauth_callback_error_message = f"Strava authorization failed: {exc}"
 
     st.title("Strava Goal Tracker")
+    if oauth_callback_error_message:
+        st.error(oauth_callback_error_message)
+
     auto_sync_key = "dashboard_auto_sync_checked"
     viewer_key = _SESSION_VIEWER_KEY
 
-    if st.sidebar.button("Log Out Viewer"):
-        _clear_viewer_session()
-        st.rerun()
-
-    if st.session_state.get(viewer_key) is not None and not _viewer_session_is_fresh(
-        now_utc=datetime.now(UTC)
-    ):
-        _clear_viewer_session()
-        st.sidebar.info("Viewer session expired. Verify again to continue.")
-
-    account_context = _load_account_context(repository, viewer_key=viewer_key)
-    oauth_accounts = account_context.oauth_accounts
-    latest_sync_utc_val = account_context.latest_sync_utc_val
-    viewer_user_id = account_context.viewer_user_id
-    viewer_last_sync_utc = account_context.viewer_last_sync_utc
+    oauth_accounts = repository.get_oauth_accounts()
+    latest_sync_utc_val = latest_sync_utc(oauth_accounts)
+    viewer_from_session = st.session_state.get(viewer_key)
+    viewer_user_id = viewer_from_session if isinstance(viewer_from_session, int) else None
+    valid_viewer_ids = {
+        int(account["verified_user_id"])
+        for account in oauth_accounts
+        if isinstance(account.get("verified_user_id"), int)
+    }
+    if viewer_user_id not in valid_viewer_ids:
+        viewer_user_id = None
+    if viewer_user_id is None and len(oauth_accounts) == 1:
+        only_account = oauth_accounts[0]
+        only_verified_user_id = only_account.get("verified_user_id")
+        if isinstance(only_verified_user_id, int):
+            _mark_viewer_verified(only_verified_user_id)
+            viewer_user_id = only_verified_user_id
+    viewer_last_sync_utc = (
+        account_last_sync_utc(oauth_accounts, viewer_user_id)
+        if viewer_user_id is not None
+        else None
+    )
 
     should_check_auto_sync = not st.session_state.get(auto_sync_key, False)
     if oauth_accounts and settings.auto_sync_enabled and should_check_auto_sync:
@@ -494,6 +538,7 @@ def run_dashboard() -> None:
                 return
             try:
                 authorize_url = begin_oauth_flow(settings, repository)
+                st.session_state[_SESSION_POST_OAUTH_CLUB_ID_KEY] = active_club_id
                 st.session_state[_SESSION_OAUTH_PENDING_URL_KEY] = authorize_url
                 st.rerun()
             except (ValueError, StravaOAuthError) as exc:
@@ -502,29 +547,26 @@ def run_dashboard() -> None:
         pending_authorize_url = st.session_state.get(_SESSION_OAUTH_PENDING_URL_KEY)
         if isinstance(pending_authorize_url, str) and pending_authorize_url:
             st.sidebar.info(
-                "Opening Strava authorization in a new tab. "
-                "If nothing opens, click the button below."
+                "Continue authorization in this same tab to ensure "
+                "the callback updates this session."
+            )
+            st.sidebar.markdown(
+                f'<a href="{pending_authorize_url}" target="_self">'
+                "Continue OAuth in this tab"
+                "</a>",
+                unsafe_allow_html=True,
             )
             st.sidebar.link_button(
-                "✓ Open Strava Authorization",
+                "Open Strava Authorization (new tab)",
                 pending_authorize_url,
-                type="primary",
-                use_container_width=True,
+                width="stretch",
             )
-            # Try desktop auto-redirect (works on desktop, harmless on mobile).
-            # Mobile will use the direct link button above.
-            components.html(
-                f"""
-                <script>
-                try {{
-                  window.location.href = {pending_authorize_url!r};
-                }} catch(e) {{
-                  console.log('Auto-redirect unavailable, use button above.');
-                }}
-                </script>
-                """,
-                height=0,
-            )
+            if st.sidebar.button("I completed authorization"):
+                _clear_pending_oauth_urls()
+                st.rerun()
+            if st.sidebar.button("Start authorization over"):
+                _clear_pending_oauth_urls()
+                st.rerun()
     else:
         # Local server flow (local dev / CLI)
         if st.sidebar.button("Connect Strava Account"):
@@ -625,15 +667,31 @@ def run_dashboard() -> None:
                     viewer_user_id=viewer_user_id,
                 )
 
-    _render_connected_accounts_sidebar(
-        oauth_accounts=oauth_accounts,
-        viewer_user_id=viewer_user_id,
-        viewer_last_sync_utc=viewer_last_sync_utc,
-        latest_sync_utc_val=latest_sync_utc_val,
-        active_club_id=active_club_id,
-        cooldown_remaining_seconds=cooldown_remaining_seconds,
-        manual_sync_cooldown_seconds=settings.manual_sync_cooldown_seconds,
-    )
+    if oauth_accounts:
+        account_count = len(oauth_accounts)
+        st.sidebar.caption(f"{account_count} account{'s' if account_count != 1 else ''} connected")
+        if viewer_user_id is not None and viewer_last_sync_utc is None:
+            st.sidebar.caption("Your last sync: never")
+        elif viewer_user_id is not None and viewer_last_sync_utc is not None:
+            st.sidebar.caption(
+                f"Your last sync: {viewer_last_sync_utc.strftime('%Y-%m-%d %H:%M UTC')}"
+            )
+        elif latest_sync_utc_val is None:
+            st.sidebar.caption("Last sync: never")
+        else:
+            st.sidebar.caption(f"Last sync: {latest_sync_utc_val.strftime('%Y-%m-%d %H:%M UTC')}")
+        if active_club_id is None and cooldown_remaining_seconds > 0:
+            st.sidebar.caption(
+                "Manual sync cooldown: " f"{_format_seconds(cooldown_remaining_seconds)} remaining"
+            )
+        if active_club_id is not None:
+            st.sidebar.caption(
+                "Club sync uses per-member cooldowns "
+                f"({settings.manual_sync_cooldown_seconds}s each)."
+            )
+    else:
+        st.sidebar.caption("No connected accounts yet")
+        st.sidebar.caption("Connect accounts to sync and visualize data")
 
     # Sidebar footer with links to public site pages
     about_url = getattr(settings, "about_url", "") or ""

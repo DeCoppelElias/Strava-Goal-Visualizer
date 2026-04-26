@@ -6,7 +6,7 @@
     <title>Goal Visualizer | Running Analytics Dashboard</title>
     <meta
       name="description"
-      content="Goal Visualizer: A free, privacy-first analytics dashboard for tracking personal and club running goals using Strava data."
+      content="Goal Visualizer: An analytics dashboard for tracking personal and club running goals using Strava data."
     />
     <link rel="stylesheet" href="styles.css" />
   </head>
@@ -14,11 +14,11 @@
     <main>
       <section class="card">
         <h1>Goal Visualizer</h1>
-        <p class="subtle">Free, privacy-first running analytics for Strava</p>
+        <p class="subtle">Running analytics for Strava</p>
 
         <h2>What is Goal Visualizer?</h2>
         <p>
-          Goal Visualizer is a lightweight, privacy-focused analytics dashboard that helps runners
+          Goal Visualizer is an analytics dashboard that helps runners
           track progress toward annual running goals. Connect your Strava account to see:
         </p>
         <ul>
@@ -43,9 +43,10 @@
 
         <h2>How It Works</h2>
         <ol>
-          <li>You authorize your Strava account via secure OAuth</li>
+          <li>You authorize your Strava account via secure OAuth (web flow works on desktop and mobile browsers)</li>
           <li>Goal Visualizer fetches your Run activities</li>
           <li>Data is stored in a local SQLite database (OAuth tokens encrypted at rest)</li>
+          <li>Accepted OAuth callback scopes are validated and stored for troubleshooting</li>
           <li>Dashboard generates your personalized analytics</li>
           <li>You can disconnect and delete anytime</li>
         </ol>
@@ -64,12 +65,13 @@
           <li>SQLite for local data storage</li>
           <li>Fernet encryption for OAuth token security</li>
           <li>Strava v3 API (activity:read_all, profile:read_all scopes)</li>
-          <li>Deployed on Render (HTTPS enforced)</li>
+          <li>Short-lived token refresh with persisted token rotation</li>
+          <li>Deployed on Fly.io (HTTPS enforced)</li>
         </ul>
 
         <h2>Get Started</h2>
         <p>
-          <a href="https://strava-goal-visualizer.onrender.com">Launch Goal Visualizer →</a>
+          <a href="https://strava-goal-visualizer.fly.dev">Launch Goal Visualizer →</a>
         </p>
 
         <nav aria-label="Legal pages">

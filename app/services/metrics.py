@@ -23,6 +23,7 @@ class ClubCompletionSummary:
 def athlete_progress_table(
     activities: pd.DataFrame,
     annual_goal_km: float | Mapping[int, float],
+    year: int | None = None,
 ) -> pd.DataFrame:
     if activities.empty:
         return pd.DataFrame(
@@ -34,6 +35,7 @@ def athlete_progress_table(
                 "goal_km",
                 "completion_pct",
                 "remaining_km",
+                "days_elapsed",
             ]
         )
 
@@ -56,6 +58,22 @@ def athlete_progress_table(
     grouped["completion_pct"] = (grouped["distance_km"] / grouped["goal_km"]) * 100.0
     grouped["remaining_km"] = (grouped["goal_km"] - grouped["distance_km"]).clip(lower=0.0)
 
+    # Calculate days elapsed since Jan 1 of the given year
+    if year is not None:
+        from datetime import UTC, datetime
+
+        today = datetime.now(UTC).date()
+        year_start = datetime(year, 1, 1, tzinfo=UTC).date()
+        days_elapsed = (today - year_start).days + 1  # +1 to include Jan 1
+    else:
+        from datetime import UTC, datetime
+
+        today = datetime.now(UTC).date()
+        year_start = datetime(today.year, 1, 1, tzinfo=UTC).date()
+        days_elapsed = (today - year_start).days + 1
+
+    grouped["days_elapsed"] = days_elapsed
+
     return grouped[
         [
             "athlete_id",
@@ -65,6 +83,7 @@ def athlete_progress_table(
             "goal_km",
             "completion_pct",
             "remaining_km",
+            "days_elapsed",
         ]
     ].sort_values(by=["completion_pct", "distance_km"], ascending=False)
 

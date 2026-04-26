@@ -208,6 +208,25 @@ class TestOAuthTokenPersistence:
         assert token["access_token"] == "plain_access"
         assert token["refresh_token"] == "plain_refresh"
 
+    def test_save_oauth_token_persists_accepted_scope(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "test.db"
+        repo = SQLiteRepository(db_path)
+        repo.initialize()
+        self._seed_verified_user(repo, 321)
+
+        repo.save_oauth_token(
+            token_id="oauth_scope",
+            verified_user_id=321,
+            access_token="access_scope",
+            refresh_token="refresh_scope",
+            access_token_expires_at=1712280000,
+            accepted_scope="read,activity:read_all,profile:read_all",
+        )
+
+        token = repo.get_oauth_token_by_verified_user_id(321)
+        assert token is not None
+        assert token["accepted_scope"] == "read,activity:read_all,profile:read_all"
+
 
 class TestVerifiedUserPersistence:
     """Tests for saving and retrieving verified user profiles."""

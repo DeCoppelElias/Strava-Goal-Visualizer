@@ -172,8 +172,13 @@ class StravaClient:
     def deauthorize(self) -> None:
         self._ensure_access_token()
 
+        access_token = self._access_token
+        if not isinstance(access_token, str) or not access_token:
+            raise StravaClientError("Cannot deauthorize without a valid access token")
+
         response = self._session.post(
             self._oauth_deauthorize_url,
+            data={"access_token": access_token},
             timeout=self._timeout_seconds,
         )
         if response.status_code >= 400:
@@ -181,6 +186,13 @@ class StravaClient:
             raise StravaClientError(
                 "Strava deauthorize failed with status " f"{response.status_code}: {detail}"
             )
+
+    def current_token_state(self) -> dict[str, str | int | None]:
+        return {
+            "access_token": self._access_token,
+            "refresh_token": self._refresh_token,
+            "access_token_expires_at": self._access_token_expires_at,
+        }
 
     def _request_with_retry(
         self,

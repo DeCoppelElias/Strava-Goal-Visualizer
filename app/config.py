@@ -74,6 +74,9 @@ def load_settings() -> Settings:
     client_id_raw = os.getenv("STRAVA_CLIENT_ID")
     client_secret = os.getenv("STRAVA_CLIENT_SECRET")
     token_encryption_key = os.getenv("TOKEN_ENCRYPTION_KEY", "").strip()
+    fly_app_name = os.getenv("FLY_APP_NAME", "").strip()
+    fly_hostname = os.getenv("FLY_APP_HOSTNAME", "").strip()
+    fly_default_base_url = f"https://{fly_app_name}.fly.dev" if fly_app_name else ""
 
     if not client_id_raw or not client_secret:
         raise ValueError("Authorized-only mode requires STRAVA_CLIENT_ID and STRAVA_CLIENT_SECRET")
@@ -102,7 +105,7 @@ def load_settings() -> Settings:
         maintenance_cron_token=os.getenv("MAINTENANCE_CRON_TOKEN", "").strip(),
         app_base_url=os.getenv(
             "APP_BASE_URL",
-            os.getenv("RENDER_EXTERNAL_URL", ""),
+            fly_hostname or fly_default_base_url,
         )
         .strip()
         .rstrip("/"),

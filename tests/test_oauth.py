@@ -28,7 +28,7 @@ class TestBuildAuthorizeUrl:
         assert "response_type=code" in url
         assert "redirect_uri=http%3A%2F%2Flocalhost%3A8765%2Fcallback" in url
         assert "scope=activity%3Aread_all%2Cprofile%3Aread_all" in url
-        assert "approval_prompt=force" in url
+        assert "approval_prompt=auto" in url
 
     def test_build_authorize_url_custom_redirect(self) -> None:
         """Should accept custom redirect_uri."""
@@ -284,3 +284,176 @@ class TestBeginCompleteOAuthFlow:
 
         with pytest.raises(StravaOAuthError, match="Invalid or expired"):
             complete_oauth_flow(settings, repo, code="some-code", state="never-saved")
+
+
+class TestOAuthScopeValidation:
+    """Ensure OAuth flow enforces required scopes when users approve permissions."""
+
+    def test_complete_oauth_flow_raises_when_scope_missing(self, tmp_path: Path) -> None:
+        from app.config import Settings
+        from app.services.oauth_auth import complete_oauth_flow
+        from app.storage.sqlite import SQLiteRepository
+
+        settings = Settings(
+            strava_client_id=1,
+            strava_client_secret="secret",
+            app_base_url="https://example.onrender.com",
+        )
+        repo = SQLiteRepository(tmp_path / "cache.db")
+        repo.initialize()
+        repo.save_pending_oauth_state("valid-state", ttl_seconds=60)
+
+        with (
+            patch("app.services.oauth_auth.exchange_code_for_tokens") as exchange_mock,
+            patch("app.services.oauth_auth.StravaClient") as client_cls,
+        ):
+            exchange_mock.return_value = {
+                "access_token": "token",
+                "refresh_token": "refresh",
+                "expires_at": 1712280000,
+            }
+            client = MagicMock()
+            client_cls.return_value = client
+            client.get_authenticated_athlete.return_value = {
+                "id": 123,
+                "firstname": "Jane",
+                "lastname": "Doe",
+                "clubs": [],
+            }
+
+            with pytest.raises(StravaOAuthError, match="Missing required Strava permissions"):
+                complete_oauth_flow(
+                    settings,
+                    repo,
+                    code="oauth-code",
+                    state="valid-state",
+                    granted_scope="activity:read_all",
+                )
+
+    def test_complete_oauth_flow_allows_missing_scope_when_capabilities_work(
+        self, tmp_path: Path
+    ) -> None:
+        from app.config import Settings
+        from app.services.oauth_auth import complete_oauth_flow
+        from app.storage.sqlite import SQLiteRepository
+
+        settings = Settings(
+            strava_client_id=1,
+            strava_client_secret="secret",
+            app_base_url="https://example.onrender.com",
+        )
+        repo = SQLiteRepository(tmp_path / "cache.db")
+        repo.initialize()
+        repo.save_pending_oauth_state("valid-state", ttl_seconds=60)
+
+        with (
+            patch("app.services.oauth_auth.exchange_code_for_tokens") as exchange_mock,
+            patch("app.services.oauth_auth.StravaClient") as client_cls,
+        ):
+            exchange_mock.return_value = {
+                "access_token": "token",
+                "refresh_token": "refresh",
+                "expires_at": 1712280000,
+            }
+            client = MagicMock()
+            client_cls.return_value = client
+            client.get_authenticated_athlete.return_value = {
+                "id": 123,
+                "firstname": "Jane",
+                "lastname": "Doe",
+                "clubs": [],
+            }
+            client.get_athlete_activities.return_value = []
+
+            user = complete_oauth_flow(
+                settings,
+                repo,
+                code="oauth-code",
+                state="valid-state",
+            )
+
+        assert user.verified_user_id == 123
+
+    def test_complete_oauth_flow_raises_when_scope_not_returned_and_profile_probe_fails(
+        self, tmp_path: Path
+    ) -> None:
+        from app.config import Settings
+        from app.services.oauth_auth import complete_oauth_flow
+        from app.storage.sqlite import SQLiteRepository
+
+        settings = Settings(
+            strava_client_id=1,
+            strava_client_secret="secret",
+            app_base_url="https://example.onrender.com",
+        )
+        repo = SQLiteRepository(tmp_path / "cache.db")
+        repo.initialize()
+        repo.save_pending_oauth_state("valid-state", ttl_seconds=60)
+
+        with (
+            patch("app.services.oauth_auth.exchange_code_for_tokens") as exchange_mock,
+            patch("app.services.oauth_auth.StravaClient") as client_cls,
+        ):
+            exchange_mock.return_value = {
+                "access_token": "token",
+                "refresh_token": "refresh",
+                "expires_at": 1712280000,
+            }
+            client = MagicMock()
+            client_cls.return_value = client
+            client.get_authenticated_athlete.return_value = {
+                "id": 123,
+                "firstname": "Jane",
+                "lastname": "Doe",
+                "clubs": None,
+            }
+
+            with pytest.raises(StravaOAuthError, match="missing required profile access"):
+                complete_oauth_flow(
+                    settings,
+                    repo,
+                    code="oauth-code",
+                    state="valid-state",
+                )
+
+    def test_complete_oauth_flow_accepts_scope_from_callback(self, tmp_path: Path) -> None:
+        from app.config import Settings
+        from app.services.oauth_auth import complete_oauth_flow
+        from app.storage.sqlite import SQLiteRepository
+
+        settings = Settings(
+            strava_client_id=1,
+            strava_client_secret="secret",
+            app_base_url="https://example.onrender.com",
+        )
+        repo = SQLiteRepository(tmp_path / "cache.db")
+        repo.initialize()
+        repo.save_pending_oauth_state("valid-state", ttl_seconds=60)
+
+        with (
+            patch("app.services.oauth_auth.exchange_code_for_tokens") as exchange_mock,
+            patch("app.services.oauth_auth.StravaClient") as client_cls,
+        ):
+            exchange_mock.return_value = {
+                "access_token": "token",
+                "refresh_token": "refresh",
+                "expires_at": 1712280000,
+            }
+            client = MagicMock()
+            client_cls.return_value = client
+            client.get_authenticated_athlete.return_value = {
+                "id": 123,
+                "firstname": "Jane",
+                "lastname": "Doe",
+                "clubs": [],
+            }
+
+            user = complete_oauth_flow(
+                settings,
+                repo,
+                code="oauth-code",
+                state="valid-state",
+                granted_scope="activity:read_all,profile:read_all",
+            )
+
+        assert user.verified_user_id == 123

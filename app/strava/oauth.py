@@ -5,6 +5,7 @@ from __future__ import annotations
 import http.server
 import logging
 import threading
+from dataclasses import dataclass
 from typing import Any
 from urllib.parse import parse_qs, urlencode
 
@@ -19,11 +20,18 @@ class StravaOAuthError(RuntimeError):
     pass
 
 
+@dataclass(frozen=True)
+class OAuthCallbackResult:
+    code: str
+    granted_scope: str | None = None
+
+
 def build_authorize_url(
     client_id: int,
     redirect_uri: str = "http://localhost:8765/callback",
     scope: str = "activity:read_all,profile:read_all",
     state: str = "strava_auth",
+    approval_prompt: str = "auto",
 ) -> str:
     """Build Strava OAuth authorize URL.
 
@@ -32,6 +40,7 @@ def build_authorize_url(
         redirect_uri: Where Strava redirects after user approves (must match app settings)
         scope: Comma-separated scopes
         state: Anti-forgery token (simple static string for this implementation)
+        approval_prompt: Use "auto" for normal reconnects or "force" to always prompt
 
     Returns:
         Full Strava authorize URL to open in browser
@@ -40,7 +49,7 @@ def build_authorize_url(
         "client_id": client_id,
         "response_type": "code",
         "redirect_uri": redirect_uri,
-        "approval_prompt": "force",
+        "approval_prompt": approval_prompt,
         "scope": scope,
         "state": state,
     }
@@ -52,22 +61,35 @@ def start_callback_listener(
     timeout_seconds: int = 300,
     expected_state: str | None = None,
 ) -> str:
+    """Backwards-compatible wrapper returning only the authorization code."""
+    return start_callback_listener_with_metadata(
+        port=port,
+        timeout_seconds=timeout_seconds,
+        expected_state=expected_state,
+    ).code
+
+
+def start_callback_listener_with_metadata(
+    port: int = 8765,
+    timeout_seconds: int = 300,
+    expected_state: str | None = None,
+) -> OAuthCallbackResult:
     """Start local HTTP server listening for OAuth callback on localhost:{port}/callback.
 
-    Blocks until callback received or timeout. Returns the authorization code.
+    Blocks until callback received or timeout. Returns callback code and granted scope metadata.
 
     Args:
         port: Port to listen on (default 8765)
         timeout_seconds: How long to wait for callback before raising TimeoutError
 
     Returns:
-        Authorization code from Strava
+        OAuthCallbackResult with authorization code and optional callback scope
 
     Raises:
         TimeoutError: If no callback received within timeout
         StravaOAuthError: If callback URL is invalid or code missing
     """
-    code_holder: dict[str, str | None] = {"code": None, "error": None}
+    code_holder: dict[str, str | None] = {"code": None, "scope": None, "error": None}
     ready_event = threading.Event()
 
     class CallbackHandler(http.server.BaseHTTPRequestHandler):
@@ -120,6 +142,9 @@ def start_callback_listener(
                     return
 
                 code_holder["code"] = params["code"][0]
+                callback_scope = params.get("scope", [None])[0]
+                if isinstance(callback_scope, str) and callback_scope.strip():
+                    code_holder["scope"] = callback_scope
                 self.send_response(200)
                 self.send_header("Content-type", "text/html")
                 self.end_headers()
@@ -154,7 +179,10 @@ def start_callback_listener(
                 raise StravaOAuthError(f"OAuth callback error: {code_holder['error']}")
             if not code_holder["code"]:
                 raise StravaOAuthError("No authorization code received")
-            return code_holder["code"]
+            return OAuthCallbackResult(
+                code=code_holder["code"],
+                granted_scope=code_holder["scope"],
+            )
         else:
             raise TimeoutError(
                 f"No OAuth callback received within {timeout_seconds}s. "
@@ -218,7 +246,6 @@ def exchange_code_for_tokens(
     access_token = result.get("access_token")
     refresh_token = result.get("refresh_token")
     expires_at = result.get("expires_at")
-
     if not isinstance(access_token, str) or not access_token:
         raise StravaOAuthError("Missing access_token in OAuth response")
 
