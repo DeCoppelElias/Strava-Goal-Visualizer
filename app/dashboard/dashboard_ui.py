@@ -6,7 +6,6 @@ from typing import Any
 
 import altair as alt
 import streamlit as st
-import streamlit.components.v1 as components
 
 from app.config import load_settings
 from app.dashboard.goal_preferences import render_goal_preference
@@ -38,6 +37,20 @@ _SESSION_PRIVACY_KEY = "privacy_verified_user_id"
 _SESSION_VERIFIED_AT_KEY = "dashboard_verified_at_utc"
 _SESSION_TIMEOUT = timedelta(minutes=15)
 _SESSION_OAUTH_PENDING_URL_KEY = "oauth_pending_authorize_url"
+_SESSION_PRIVACY_OAUTH_PENDING_URL_KEY = "privacy_oauth_pending_authorize_url"
+_SESSION_POST_OAUTH_CLUB_ID_KEY = "post_oauth_club_id"
+
+
+def _clear_pending_oauth_urls() -> None:
+    st.session_state.pop(_SESSION_OAUTH_PENDING_URL_KEY, None)
+    st.session_state.pop(_SESSION_PRIVACY_OAUTH_PENDING_URL_KEY, None)
+
+
+def _apply_post_oauth_navigation() -> None:
+    post_oauth_club_id = st.session_state.pop(_SESSION_POST_OAUTH_CLUB_ID_KEY, None)
+    st.query_params.clear()
+    if isinstance(post_oauth_club_id, int) and post_oauth_club_id > 0:
+        st.query_params["club_id"] = str(post_oauth_club_id)
 
 
 @dataclass
@@ -196,39 +209,45 @@ def _load_account_context(
     )
 
 
-def _handle_oauth_query_callback(settings: Any, repository: SQLiteRepository) -> bool:
+def _handle_oauth_query_callback(settings: Any, repository: SQLiteRepository) -> str | None:
     # Detect Strava OAuth callback error from query params.
     oauth_error = _query_param_text("error")
     if oauth_error:
-        st.query_params.clear()
-        st.error(f"Strava authorization was not completed: {oauth_error}")
-        return True
+        _clear_pending_oauth_urls()
+        _apply_post_oauth_navigation()
+        return f"Strava authorization was not completed: {oauth_error}"
 
     # Detect Strava OAuth web callback (code + state in URL after redirect).
     oauth_code = _query_param_text("code")
     oauth_state = _query_param_text("state")
+    oauth_scope = _query_param_text("scope")
     if not (oauth_code and oauth_state):
-        return False
+        return None
 
     complete_oauth_flow = getattr(oauth_auth, "complete_oauth_flow", None)
     if not callable(complete_oauth_flow):
-        st.query_params.clear()
-        st.error(
+        _apply_post_oauth_navigation()
+        return (
             "OAuth callback handler is unavailable in this build. "
             "Please redeploy or restart the app."
         )
-        return True
     try:
-        user = complete_oauth_flow(settings, repository, oauth_code, oauth_state)
+        user = complete_oauth_flow(
+            settings,
+            repository,
+            oauth_code,
+            oauth_state,
+            granted_scope=oauth_scope,
+        )
         _mark_viewer_verified(user.verified_user_id)
-        st.session_state.pop(_SESSION_OAUTH_PENDING_URL_KEY, None)
-        st.query_params.clear()
+        _clear_pending_oauth_urls()
+        _apply_post_oauth_navigation()
         st.rerun()
     except (StravaOAuthError, StravaClientError, ValueError) as exc:
-        st.session_state.pop(_SESSION_OAUTH_PENDING_URL_KEY, None)
-        st.query_params.clear()
-        st.error(f"Strava authorization failed: {exc}")
-    return True
+        _clear_pending_oauth_urls()
+        _apply_post_oauth_navigation()
+        return f"Strava authorization failed: {exc}"
+    return None
 
 
 def _render_connected_accounts_sidebar(
@@ -242,6 +261,8 @@ def _render_connected_accounts_sidebar(
     manual_sync_cooldown_seconds: int,
 ) -> None:
     if oauth_accounts:
+        account_count = len(oauth_accounts)
+        st.sidebar.caption(f"{account_count} account{'s' if account_count != 1 else ''} connected")
         if viewer_user_id is not None and viewer_last_sync_utc is None:
             st.sidebar.caption("Your last sync: never")
         elif viewer_user_id is not None and viewer_last_sync_utc is not None:
@@ -429,10 +450,11 @@ def run_dashboard() -> None:
     if handle_maintenance_request(settings, repository):
         return
 
-    if _handle_oauth_query_callback(settings, repository):
-        return
+    oauth_callback_error_message = _handle_oauth_query_callback(settings, repository)
 
     st.title("Strava Goal Tracker")
+    if oauth_callback_error_message:
+        st.error(oauth_callback_error_message)
     auto_sync_key = "dashboard_auto_sync_checked"
     viewer_key = _SESSION_VIEWER_KEY
 
@@ -451,6 +473,13 @@ def run_dashboard() -> None:
     latest_sync_utc_val = account_context.latest_sync_utc_val
     viewer_user_id = account_context.viewer_user_id
     viewer_last_sync_utc = account_context.viewer_last_sync_utc
+    if viewer_user_id is None and len(oauth_accounts) == 1:
+        only_account = oauth_accounts[0]
+        only_verified_user_id = only_account.get("verified_user_id")
+        if isinstance(only_verified_user_id, int):
+            _mark_viewer_verified(only_verified_user_id)
+            viewer_user_id = only_verified_user_id
+            viewer_last_sync_utc = account_last_sync_utc(oauth_accounts, viewer_user_id)
 
     should_check_auto_sync = not st.session_state.get(auto_sync_key, False)
     if oauth_accounts and settings.auto_sync_enabled and should_check_auto_sync:
@@ -496,6 +525,7 @@ def run_dashboard() -> None:
                 return
             try:
                 authorize_url = begin_oauth_flow(settings, repository)
+                st.session_state[_SESSION_POST_OAUTH_CLUB_ID_KEY] = active_club_id
                 st.session_state[_SESSION_OAUTH_PENDING_URL_KEY] = authorize_url
                 st.rerun()
             except (ValueError, StravaOAuthError) as exc:
@@ -504,29 +534,26 @@ def run_dashboard() -> None:
         pending_authorize_url = st.session_state.get(_SESSION_OAUTH_PENDING_URL_KEY)
         if isinstance(pending_authorize_url, str) and pending_authorize_url:
             st.sidebar.info(
-                "Opening Strava authorization in a new tab. "
-                "If nothing opens, click the button below."
+                "Continue authorization in this same tab to ensure "
+                "the callback updates this session."
+            )
+            st.sidebar.markdown(
+                f'<a href="{pending_authorize_url}" target="_self">'
+                "Continue OAuth in this tab"
+                "</a>",
+                unsafe_allow_html=True,
             )
             st.sidebar.link_button(
-                "✓ Open Strava Authorization",
+                "Open Strava Authorization (new tab)",
                 pending_authorize_url,
-                type="primary",
                 use_container_width=True,
             )
-            # Try desktop auto-redirect (works on desktop, harmless on mobile).
-            # Mobile will use the direct link button above.
-            components.html(
-                f"""
-                <script>
-                try {{
-                  window.location.href = {pending_authorize_url!r};
-                }} catch(e) {{
-                  console.log('Auto-redirect unavailable, use button above.');
-                }}
-                </script>
-                """,
-                height=0,
-            )
+            if st.sidebar.button("I completed authorization"):
+                _clear_pending_oauth_urls()
+                st.rerun()
+            if st.sidebar.button("Start authorization over"):
+                _clear_pending_oauth_urls()
+                st.rerun()
     else:
         # Local server flow (local dev / CLI)
         if st.sidebar.button("Connect Strava Account"):
