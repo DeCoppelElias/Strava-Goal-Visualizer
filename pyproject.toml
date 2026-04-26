@@ -3,9 +3,9 @@ requires = ["setuptools>=69", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "strava-club-visualizer"
+name = "strava-goal-visualizer"
 version = "0.1.0"
-description = "Track Strava club run progress toward a 365 km goal"
+description = "Track Strava run progress toward a 365 km goal"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [

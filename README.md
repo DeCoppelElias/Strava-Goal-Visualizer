@@ -70,13 +70,6 @@ python main.py oauth-authorize
 python main.py oauth-list
 ```
 
-OAuth behavior notes:
-- The app uses Strava web OAuth (`/oauth/authorize`) which works in desktop and mobile browsers.
-- Required scopes are `activity:read_all` and `profile:read_all`; callback scopes are validated when present.
-- If scope metadata is missing, the app falls back to API capability probes before accepting authorization.
-- Accepted callback scopes are stored locally for troubleshooting.
-- Refresh and access token updates returned by Strava are persisted after sync operations.
-
 ### Syncing Activities
 ```bash
 # Sync all authorized athletes
@@ -142,7 +135,7 @@ Users who disconnect and delete data in Privacy Settings are automatically remov
 
 Cleanup operations must be scheduled to run regularly. Choose one:
 
-### Option 1: GitHub Actions (Recommended for Render)
+### Option 1: GitHub Actions (Recommended for Fly.io)
 The included `.github/workflows/maintenance.yml` automatically runs daily and can also be triggered manually.
 It triggers both cleanup jobs:
 - `cleanup-inactive` with a 90-day inactivity window
@@ -151,7 +144,7 @@ It triggers both cleanup jobs:
 **Setup:**
 1. Set `MAINTENANCE_CRON_TOKEN` in your deployed environment to a random string.
 2. Add these as GitHub repository secrets:
-  - `MAINTENANCE_BASE_URL`: your app URL only, with no query string (e.g., `https://your-app.onrender.com`)
+  - `MAINTENANCE_BASE_URL`: your app URL only, with no query string (e.g., `https://your-app.fly.dev`)
    - `MAINTENANCE_CRON_TOKEN`: same value as above
 3. Commit and push; workflow runs automatically each day.
 
@@ -167,6 +160,46 @@ python main.py cleanup-activities --years 3 --execute
 ```
 
 Always dry-run first to verify output before enabling `--execute`.
+
+## Deploy on Fly.io
+
+### 1. Install and authenticate
+```bash
+fly auth login
+```
+
+### 2. Initialize app config
+```bash
+fly launch --no-deploy
+```
+
+This repo includes `fly.toml`, `Dockerfile`, and `.streamlit/config.toml`.
+
+### 3. Set required Fly secrets
+```bash
+fly secrets set STRAVA_CLIENT_ID=your_app_id
+fly secrets set STRAVA_CLIENT_SECRET=your_app_secret
+fly secrets set TOKEN_ENCRYPTION_KEY=your_generated_fernet_key
+fly secrets set APP_BASE_URL=https://your-app.fly.dev
+```
+
+Optional:
+```bash
+fly secrets set MAINTENANCE_CRON_TOKEN=your_cron_token
+fly secrets set SUPPORT_CONTACT_EMAIL=goalvisualizer.support@gmail.com
+```
+
+### 4. Deploy
+```bash
+fly deploy
+```
+
+### 5. Verify
+```bash
+fly logs
+```
+
+Open your Fly URL and complete one OAuth connect flow to verify callback behavior.
 
 ## GitHub Pages Legal Documentation
 

@@ -7,11 +7,20 @@ import altair as alt
 import streamlit as st
 
 from app.config import load_settings
+from app.dashboard.dashboard_cache import (
+    cached_activities,
+    cached_available_years,
+    cached_club_summary,
+    cached_cumulative,
+    cached_goal_map,
+    cached_guide,
+    cached_progress,
+    cached_summary,
+)
 from app.dashboard.goal_preferences import render_goal_preference
 from app.dashboard.privacy_settings import render_privacy_settings
 from app.maintenance.runner import handle_maintenance_request
 from app.services import oauth_auth
-from app.services.dashboard_data import available_years, fetch_view_activities, fetch_view_goal_map
 from app.services.dashboard_sync import (
     account_last_sync_utc,
     latest_sync_utc,
@@ -19,21 +28,12 @@ from app.services.dashboard_sync import (
     run_sync_for_club_members,
     run_sync_for_viewer,
 )
-from app.services.metrics import (
-    athlete_progress_table,
-    club_completion_summary,
-    club_summary,
-    cumulative_distance_progress,
-    one_km_per_day_guide,
-)
 from app.storage.sqlite import SQLiteRepository
 from app.strava.client import StravaClientError
 from app.strava.oauth import StravaOAuthError
 
 _SESSION_VIEWER_KEY = "dashboard_verified_user_id"
 _SESSION_PRIVACY_KEY = "privacy_verified_user_id"
-_SESSION_VERIFIED_AT_KEY = "dashboard_verified_at_utc"
-_SESSION_TIMEOUT = timedelta(minutes=15)
 _SESSION_OAUTH_PENDING_URL_KEY = "oauth_pending_authorize_url"
 _SESSION_PRIVACY_OAUTH_PENDING_URL_KEY = "privacy_oauth_pending_authorize_url"
 _SESSION_POST_OAUTH_CLUB_ID_KEY = "post_oauth_club_id"
@@ -133,28 +133,11 @@ def _progress_display_table(progress: Any) -> Any:
 def _mark_viewer_verified(verified_user_id: int) -> None:
     st.session_state[_SESSION_VIEWER_KEY] = verified_user_id
     st.session_state[_SESSION_PRIVACY_KEY] = verified_user_id
-    st.session_state[_SESSION_VERIFIED_AT_KEY] = datetime.now(UTC).isoformat()
 
 
 def _clear_viewer_session() -> None:
     st.session_state.pop(_SESSION_VIEWER_KEY, None)
     st.session_state.pop(_SESSION_PRIVACY_KEY, None)
-    st.session_state.pop(_SESSION_VERIFIED_AT_KEY, None)
-
-
-def _viewer_session_is_fresh(*, now_utc: datetime) -> bool:
-    verified_at_raw = st.session_state.get(_SESSION_VERIFIED_AT_KEY)
-    if not isinstance(verified_at_raw, str):
-        return False
-    try:
-        verified_at = datetime.fromisoformat(verified_at_raw)
-    except ValueError:
-        return False
-    if verified_at.tzinfo is None:
-        verified_at = verified_at.replace(tzinfo=UTC)
-    else:
-        verified_at = verified_at.astimezone(UTC)
-    return (now_utc - verified_at) <= _SESSION_TIMEOUT
 
 
 def _render_dashboard_main(
@@ -172,7 +155,7 @@ def _render_dashboard_main(
         st.error("You are not authorized to view this club leaderboard.")
         return
 
-    years = available_years(
+    years = cached_available_years(
         repository,
         verified_user_id=None if active_club_id is not None else viewer_user_id,
         club_id=active_club_id,
@@ -181,7 +164,7 @@ def _render_dashboard_main(
     default_year_index = years.index(current_year) if current_year in years else 0
     selected_year = st.selectbox("Year", options=years, index=default_year_index)
 
-    activities = fetch_view_activities(
+    activities = cached_activities(
         repository,
         year=selected_year,
         verified_user_id=None if active_club_id is not None else viewer_user_id,
@@ -197,7 +180,7 @@ def _render_dashboard_main(
             )
         return
 
-    goal_map = fetch_view_goal_map(
+    goal_map = cached_goal_map(
         repository,
         activities=activities,
         verified_user_id=None if active_club_id is not None else viewer_user_id,
@@ -208,16 +191,16 @@ def _render_dashboard_main(
     if active_club_id is None:
         # Personal view: goal_map is a single float
         guide_goal_km = goal_map if isinstance(goal_map, float) else settings.annual_goal_km
-        progress = athlete_progress_table(activities, guide_goal_km, year=selected_year)
+        progress = cached_progress(activities, guide_goal_km, selected_year)
     else:
         # Club view: goal_map is a dict
-        progress = athlete_progress_table(
+        progress = cached_progress(
             activities,
             goal_map if isinstance(goal_map, dict) else settings.annual_goal_km,
-            year=selected_year,
+            selected_year,
         )
 
-    summary = club_summary(progress)
+    summary = cached_summary(progress)
     metric_col_1, metric_col_2, metric_col_3 = st.columns(3)
     if active_club_id is None:
         metric_col_1.metric("Your total distance", f"{summary.total_distance_km:.1f} km")
@@ -225,7 +208,7 @@ def _render_dashboard_main(
         metric_col_3.metric("Your completion", f"{summary.completion_pct:.1f}%")
         st.caption("Default view is private to your account.")
     else:
-        club_progress = club_completion_summary(progress)
+        club_progress = cached_club_summary(progress)
         metric_col_1.metric("Athletes tracked", f"{club_progress.athlete_count}")
         metric_col_2.metric("Avg completion", f"{club_progress.average_completion_pct:.1f}%")
         metric_col_3.metric(
@@ -238,7 +221,7 @@ def _render_dashboard_main(
     st.dataframe(_progress_display_table(progress), width="stretch", hide_index=True)
 
     st.subheader("Year progress (cumulative km)")
-    cumulative = cumulative_distance_progress(activities)
+    cumulative = cached_cumulative(activities)
 
     athlete_chart_data = cumulative.rename(
         columns={
@@ -247,9 +230,9 @@ def _render_dashboard_main(
         }
     )[["date", "series", "km"]]
 
-    guide_data = one_km_per_day_guide(
+    guide_data = cached_guide(
         selected_year,
-        annual_goal_km=guide_goal_km,
+        goal_km=guide_goal_km,
     ).rename(columns={"guide_km": "km"})
     guide_data["series"] = f"On-track guide ({guide_goal_km:.0f} km goal)"
 
@@ -355,16 +338,6 @@ def run_dashboard() -> None:
 
     auto_sync_key = "dashboard_auto_sync_checked"
     viewer_key = _SESSION_VIEWER_KEY
-
-    if st.sidebar.button("Log Out Viewer"):
-        _clear_viewer_session()
-        st.rerun()
-
-    if st.session_state.get(viewer_key) is not None and not _viewer_session_is_fresh(
-        now_utc=datetime.now(UTC)
-    ):
-        _clear_viewer_session()
-        st.sidebar.info("Viewer session expired. Verify again to continue.")
 
     oauth_accounts = repository.get_oauth_accounts()
     latest_sync_utc_val = latest_sync_utc(oauth_accounts)

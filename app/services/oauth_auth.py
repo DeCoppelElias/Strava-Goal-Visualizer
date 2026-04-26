@@ -167,7 +167,7 @@ def begin_oauth_flow(settings: Settings, repository: SQLiteRepository) -> str:
     if not settings.app_base_url:
         raise ValueError(
             "APP_BASE_URL is not configured. "
-            "Set it to your deployed app URL (e.g. https://your-app.onrender.com)."
+            "Set it to your deployed app URL (e.g. https://your-app.fly.dev)."
         )
     state = secrets.token_urlsafe(32)
     repository.save_pending_oauth_state(state, ttl_seconds=600)

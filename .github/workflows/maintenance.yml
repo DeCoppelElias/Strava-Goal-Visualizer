@@ -27,7 +27,7 @@ jobs:
             "${ENDPOINT}")
           if [ "${PRECHECK_CODE}" -ge 400 ]; then
             echo "Base URL precheck failed with HTTP ${PRECHECK_CODE}."
-            echo "Set MAINTENANCE_BASE_URL to your app root only (example: https://strava-goal-visualizer.onrender.com)."
+            echo "Set MAINTENANCE_BASE_URL to your app root only (example: https://strava-goal-visualizer.fly.dev)."
             cat /tmp/maintenance_precheck_response.txt
             exit 1
           fi
@@ -65,7 +65,7 @@ jobs:
             "${ENDPOINT}")
           if [ "${PRECHECK_CODE}" -ge 400 ]; then
             echo "Base URL precheck failed with HTTP ${PRECHECK_CODE}."
-            echo "Set MAINTENANCE_BASE_URL to your app root only (example: https://strava-goal-visualizer.onrender.com)."
+            echo "Set MAINTENANCE_BASE_URL to your app root only (example: https://strava-goal-visualizer.fly.dev)."
             cat /tmp/maintenance_precheck_response.txt
             exit 1
           fi

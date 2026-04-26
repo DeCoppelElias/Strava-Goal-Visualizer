@@ -1,6 +1,10 @@
 {
     "chat.tools.terminal.autoApprove": {
-        "/^d:/VisualStudioProjects/strava-club-visualizer/\\.venv/Scripts/python\\.exe main\\.py --help$/": {
+        "/^git add app/dashboard/dashboard_ui\\.py app/dashboard/privacy_settings\\.py; git commit -m \"Improve dashboard OAuth callback UX and session handling\" -m \"- forward callback scope query param into complete_oauth_flow\" -m \"- centralize pending OAuth URL cleanup across dashboard/privacy flows\" -m \"- replace JS auto-redirect with explicit same-tab/new-tab continuation controls\" -m \"- migrate Streamlit container-width usage to width='stretch'\"$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^git add docs/about\\.html docs/index\\.html; git commit -m \"Update public docs copy and content\" -m \"- refine wording in docs landing and about pages\"$/": {
             "approve": true,
             "matchCommandLine": true
         }
